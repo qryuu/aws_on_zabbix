@@ -1,14 +1,14 @@
 #!/bin/bash
-#•Ï”éŒ¾
-rdsnama= #RDSƒGƒ“ƒhƒ|ƒCƒ“ƒg‚ð“ü—Í
-rdsuser= #RDSMasterƒ†[ƒU–¼
-rdspassword= #RDSMasterƒpƒXƒ[ƒh
-dbname=zabbix #ˆÚsŒãDB–¼
-dbuser=zabbix #ˆÚsŒãDBƒ†[ƒU–¼
-dbpassword=zabbix #ˆÚsDBƒpƒXƒ[ƒh
-#MySQL‹N“®
+#å¤‰æ•°å®£è¨€
+rdsnama= #RDSã‚¨ãƒ³ãƒ‰ãƒã‚¤ãƒ³ãƒˆã‚’å…¥åŠ›
+rdsuser= #RDSMasterãƒ¦ãƒ¼ã‚¶å
+rdspassword= #RDSMasterãƒ‘ã‚¹ãƒ¯ãƒ¼ãƒ‰
+dbname=zabbix #ç§»è¡Œå¾ŒDBå
+dbuser=zabbix #ç§»è¡Œå¾ŒDBãƒ¦ãƒ¼ã‚¶å
+dbpassword=zabbix #ç§»è¡ŒDBãƒ‘ã‚¹ãƒ¯ãƒ¼ãƒ‰
+#MySQLèµ·å‹•
 service mysqld start
-#confƒtƒ@ƒCƒ‹Žæ‚èž‚Ý
+#confãƒ•ã‚¡ã‚¤ãƒ«å–ã‚Šè¾¼ã¿
 confdbhostget() {
 cat /etc/zabbix/zabbix_server.conf |grep ^DBHost=|awk '{print substr($0,index($0,"=")+1,length($0))}'
 }
@@ -25,17 +25,17 @@ confdbpasswordget() {
 cat /etc/zabbix/zabbix_server.conf |grep ^DBPassword=|awk '{print substr($0,index($0,"=")+1,length($0))}'
 }
 confdbpassword=`confdbpasswordget`
-#dump—pmy.cnf
+#dumpç”¨my.cnf
 echo [mysql] >> /home/ec2-user/my.cnf 
 echo host = ${confdbhost} >> /home/ec2-user/my.cnf
 echo user = ${confdbuser} >> /home/ec2-user/my.cnf
 echo password = ${confdbpassword} >> /home/ec2-user/my.cnf
-#rdsƒŠƒXƒgƒA—pmy.cnf
+#rdsãƒªã‚¹ãƒˆã‚¢ç”¨my.cnf
 echo [mysql] >> /home/ec2-user/my.cnf2
 echo host = ${rdsnama} >> /home/ec2-user/my.cnf2
 echo user = ${rdsuser} >> /home/ec2-user/my.cnf2
 echo password = ${rdspassword} >> /home/ec2-user/my.cnf2
-#configC³
+#configä¿®æ­£
 sed -i -e "s/^DBHost=${confdbhost}/DBHost=${rdsnama}/g" /etc/zabbix/zabbix_server.conf
 sed -i -e "s/^DBName=${confdbname}/DBName=${dbname}/g" /etc/zabbix/zabbix_server.conf
 sed -i -e "s/^DBUser=${confdbuser}/DBUser=${dbuser}/g" /etc/zabbix/zabbix_server.conf
@@ -46,19 +46,19 @@ sed -i -e "s/^\$DB\['USER'\]     = '${confdbuser}';/\$DB\['USER'\]     = '${dbus
 sed -i -e "s/^\$DB\['PASSWORD'\] = '${confdbpassword}';/\$DB\['PASSWORD'\] = '${dbpassword}';/g" /etc/zabbix/web/zabbix.conf.php
 #dbdump
 mysqldump --defaults-extra-file=/home/ec2-user/my.cnf -N ${confdbname} > /tmp/zabbix_db.sql
-#dbì¬
+#dbä½œæˆ
 echo "create database ${dbname} character set utf8 collate utf8_bin;" > /tmp/create.sql
 mysql --defaults-extra-file=/home/ec2-user/my.cnf2  < /tmp/create.sql
 mysql --defaults-extra-file=/home/ec2-user/my.cnf2 -N ${dbname} < /tmp/zabbix_db.sql
-#dbŒ ŒÀ•ÏX
+#dbæ¨©é™å¤‰æ›´
 echo "grant all privileges on ${dbname}.* to ${dbuser}@\`%\` identified by '${dbpassword}';" > /tmp/grant.sql
 mysql --defaults-extra-file=/home/ec2-user/my.cnf2 < /tmp/grant.sql
-#ì‹Æƒtƒ@ƒCƒ‹íœ
+#ä½œæ¥­ãƒ•ã‚¡ã‚¤ãƒ«å‰Šé™¤
 rm /tmp/zabbix_db.sql
 rm /tmp/create.sql
 rm /tmp/grant.sql
 rm /home/ec2-user/my.cnf
 rm /home/ec2-user/my.cnf2
-#MySQL’âŽ~
+#MySQLåœæ­¢
 service mysqld stop
 chkconfig mysqld off
