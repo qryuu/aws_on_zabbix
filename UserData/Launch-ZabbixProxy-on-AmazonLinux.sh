@@ -98,11 +98,11 @@ if [ ${encryption} = "psk" ] ; then
 sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=psk/g" /etc/zabbix/zabbix_proxy.conf
 sed -i -e "s/# TLSAccept=unencrypted/TLSAccept=psk/g" /etc/zabbix/zabbix_proxy.conf
 sed -i -e "s/# TLSPSKIdentity=/TLSPSKIdentity=${pskid}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSPSKFile=/TLSPSKFile=\/etc\/zabbix\/tls\/.zabbix_agentd.psk/g" /etc/zabbix/zabbix_proxy.conf
+sed -i -e "s/# TLSPSKFile=/TLSPSKFile=\/etc\/zabbix\/tls\/.zabbix_proxy.psk/g" /etc/zabbix/zabbix_proxy.conf
 mkdir /etc/zabbix/tls
-openssl rand -hex 128 > /etc/zabbix/tls/.zabbix_agentd.psk
-chown zabbix.zabbix /etc/zabbix/tls/.zabbix_agentd.psk
-chmod 400 /etc/zabbix/tls/.zabbix_agentd.psk
+openssl rand -hex 128 > /etc/zabbix/tls/.zabbix_proxy.psk
+chown zabbix.zabbix /etc/zabbix/tls/.zabbix_proxy.psk
+chmod 400 /etc/zabbix/tls/.zabbix_proxy.psk
 fi
 #cert設定
 if [ ${encryption} = "cert" ] ; then
