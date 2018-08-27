@@ -18,17 +18,11 @@ certfle= #Server証明書URL
 keyfile= #秘密鍵ファイルURL
 
 #リポジトリ登録
-if [ ${amazonlinux} = "amzn1" ] ; then
-echo [serverworks-zabbix] >> /etc/yum.repos.d/serverworks.repo
-echo name=Serverworks-Zabbix >> /etc/yum.repos.d/serverworks.repo
-echo baseurl=https://s3-ap-northeast-1.amazonaws.com/serverworks-yum-repos/zabbix/$version/\$basearch >> /etc/yum.repos.d/serverworks.repo
-echo gpgcheck=0 >> /etc/yum.repos.d/serverworks.repo
-else 
-echo [serverworks-zabbix] >> /etc/yum.repos.d/serverworks.repo
-echo name=Serverworks-Zabbix >> /etc/yum.repos.d/serverworks.repo
-echo baseurl=https://s3-ap-northeast-1.amazonaws.com/serverworks-yum-repos/$amazonlinux/zabbix/$version/\$basearch >> /etc/yum.repos.d/serverworks.repo
-echo gpgcheck=0 >> /etc/yum.repos.d/serverworks.repo
-fi
+echo [amazon.zabbix] >> /etc/yum.repos.d/zabbix.repo
+echo name=amazon.zabbix >> /etc/yum.repos.d/zabbix.repo
+echo baseurl=https://s3-ap-northeast-1.amazonaws.com/amazon.zabbix/$amazonlinux/$version/\$basearch >> /etc/yum.repos.d/zabbix.repo
+echo gpgcheck=0 >> /etc/yum.repos.d/zabbix.repo
+
 #パッケージインストール
 yum update
 yum install --enablerepo=epel iksemel iksemel-devel -y
