@@ -26,15 +26,28 @@ echo gpgcheck=0 >> /etc/yum.repos.d/zabbix.repo
 #パッケージインストール
 yum update
 yum install --enablerepo=epel iksemel iksemel-devel -y
-if [ ${minorversion} = "latest" ] ; then
+if [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
 yum install zabbix-proxy-mysql zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mysql56 mysql56-server -y
-else
+elif [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
 yum install zabbix-proxy-mysql-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} mysql56 mysql56-server -y
+elif [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
+amazon-linux-extras install  epel -y
+yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mariadb mariadb-server -y
+else
+amazon-linux-extras install epel -y
+yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} mariadb mariadb-server -y
 fi
+
 #MySql起動
+if [ ${amazonlinux} = "amzn1" ] ; then
 service mysqld start
+else
+systemctl start mariadb.service
+fi
+
 #MySql root ランダムパスワード生成
 vMySQLRootPasswd="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 16 | tee -a /home/ec2-user/.mysql.secrets)"
+
 #MySql_secure_installation
 mysql -u root --password= -e "
     UPDATE mysql.user SET Password=PASSWORD('${vMySQLRootPasswd}') WHERE User='root';
@@ -42,6 +55,7 @@ mysql -u root --password= -e "
     DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
     DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
     FLUSH PRIVILEGES;"
+
 #ZabbixDB設定
 echo [mysql] >> /home/ec2-user/my.cnf 
 echo host = localhost >> /home/ec2-user/my.cnf
@@ -65,6 +79,7 @@ docversion=`docversioncheck`
 zcat "/usr/share/doc/zabbix-proxy-mysql-${docversion}/schema.sql.gz" | mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix 
 echo "ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE events ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;" > /tmp/ALTERTABLE.sql
 mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix < /tmp/ALTERTABLE.sql
+
 #ZabbixProxy設定
 sed -i -e "s/Server=127.0.0.1/Server=${server}/g" /etc/zabbix/zabbix_proxy.conf
 sed -i -e "s/Hostname=Zabbix proxy/Hostname=${proxyname}/g" /etc/zabbix/zabbix_proxy.conf
@@ -80,6 +95,7 @@ sed -i -e "s/# StartPingers=1/StartPingers=5/g" /etc/zabbix/zabbix_proxy.conf
 sed -i -e "s/# StartDiscoverers=1/StartDiscoverers=3/g" /etc/zabbix/zabbix_proxy.conf
 sed -i -e "s/# StartHTTPPollers=1/StartHTTPPollers=3/g" /etc/zabbix/zabbix_proxy.conf
 sed -i -e "s/# JavaGateway=/# JavaGateway=127.0.0.1/g" /etc/zabbix/zabbix_proxy.conf
+
 #ZabbixAgent設定
 sed -i -e "s/LogFileSize=0/LogFileSize=5/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s# EnableRemoteCommands=0/EnableRemoteCommands=1/g" /etc/zabbix/zabbix_agentd.conf
@@ -87,6 +103,7 @@ sed -i -e "s/# LogRemoteCommands=0/LogRemoteCommands=1/g" /etc/zabbix/zabbix_age
 sed -i -e "s/Hostname=Zabbix server/Hostname=${agentname}/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# RefreshActiveChecks=120/RefreshActiveChecks=60/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# UnsafeUserParameters=0/UnsafeUserParameters=1/g" /etc/zabbix/zabbix_agentd.conf
+
 #psk設定
 if [ ${encryption} = "psk" ] ; then
 sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=psk/g" /etc/zabbix/zabbix_proxy.conf
@@ -98,6 +115,7 @@ openssl rand -hex 128 > /etc/zabbix/tls/.zabbix_proxy.psk
 chown zabbix.zabbix /etc/zabbix/tls/.zabbix_proxy.psk
 chmod 400 /etc/zabbix/tls/.zabbix_proxy.psk
 fi
+
 #cert設定
 if [ ${encryption} = "cert" ] ; then
 sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=cert/g" /etc/zabbix/zabbix_proxy.conf
@@ -113,8 +131,18 @@ wget -O zabbix.key${keyfile}
 chown zabbix.zabbix /etc/zabbix/tls/*
 chmod 400 /etc/zabbix/tls/*
 fi
+
 #自動起動設定
+if [ ${amazonlinux} = "amzn1" ] ; then
 chkconfig zabbix-proxy on
 chkconfig zabbix-agent on
 chkconfig zabbix-java-gateway on
 chkconfig mysqld on
+else
+systemctl enable zabbix-server.service
+systemctl enable zabbix-agent.service
+systemctl enable zabbix-java-gateway.service
+systemctl enable mariadb.service
+fi
+
+reboot
