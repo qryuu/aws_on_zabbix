@@ -19,20 +19,33 @@ keyfile= #秘密鍵ファイルURL
 
 #リポジトリ登録
 echo [amazon.zabbix] >> /etc/yum.repos.d/zabbix.repo
-echo name=amazon.zabbix >> /etc/yum.repos.d/zabbix.repo
+echo name=Amazon-Zabbix >> /etc/yum.repos.d/zabbix.repo
 echo baseurl=https://s3-ap-northeast-1.amazonaws.com/amazon.zabbix/$amazonlinux/$version/\$basearch >> /etc/yum.repos.d/zabbix.repo
 echo gpgcheck=0 >> /etc/yum.repos.d/zabbix.repo
 
 #パッケージインストール
 yum update
 yum install --enablerepo=epel iksemel iksemel-devel -y
-if [ ${minorversion} = "latest" ] ; then
+if [ ${minorversion} = "latest" ] && [${amazonlinux} = "amzn1"] ; then
 yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mysql56 mysql56-server httpd24 -y
-else
+elif [ ${minorversion} != "latest" ] && [${amazonlinux} = "amzn1"] ; then
 yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} mysql56 mysql56-server httpd24 -y
+elif [ ${minorversion} = "latest" ] && [${amazonlinux} = "amzn2"] ; then
+amazon-linux-extras install php7.2 nginx1.12 lamp-mariadb10.2-php7.2 -y
+yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender php-fpm -y
+else
+amazon-linux-extras install php7.2 nginx1.12 lamp-mariadb10.2-php7.2 -y
+yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} php-fpm -y
 fi
+
 #MySql起動
+if [${amazonlinux} = "amzn1"] ; then
 service mysqld start
+else
+systemctl enable mariadb.service
+systemctl start mariadb.service
+fi
+
 #MySql root ランダムパスワード生成
 vMySQLRootPasswd="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 16 | tee -a /home/ec2-user/.mysql.secrets)"
 #MySql_secure_installation
@@ -110,8 +123,15 @@ chown zabbix.zabbix /etc/zabbix/tls/*
 chmod 400 /etc/zabbix/tls/*
 fi
 #自動起動設定
+if [${amazonlinux} = "amzn1"] ; then
 chkconfig zabbix-server on
 chkconfig httpd on
 chkconfig zabbix-agent on
 chkconfig zabbix-java-gateway on
 chkconfig mysqld on
+else
+systemctl enable zabbix-server
+systemctl enable zabbix-agent
+systemctl enable nginx
+systemctl enable zabbix-java-gateway
+fi
