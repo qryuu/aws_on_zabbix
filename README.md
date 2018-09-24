@@ -14,6 +14,6 @@ PSK方式を使う場合は、
 ## Launch-ZabbixServer-on-AmazonLinux
 Amazon Linux AMIにZabbixServerを自動構築します。</br>
 PSK方式を使う場合は、
-/etc/zabbix/tls/.zabbix_proxy.pskファイルの内容を取得して、GUIから設定を行ってください。</br>
+/etc/zabbix/tls/.zabbix_agentd.pskファイルの内容を取得して、GUIから設定を行ってください。</br>
 </br>
 
