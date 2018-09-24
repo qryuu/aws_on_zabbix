@@ -1,5 +1,6 @@
 #!/bin/bash
 #変数宣言
+amazonlinux=amzn1 #AmaznLinuxバージョン amzn1 or amzn2
 rdsnama= #RDSエンドポイントを入力
 rdsuser= #RDSMasterユーザ名
 rdspassword= #RDSMasterパスワード
@@ -7,7 +8,11 @@ dbname=zabbix #移行後DB名
 dbuser=zabbix #移行後DBユーザ名
 dbpassword=zabbix #移行DBパスワード
 #MySQL起動
+if [ ${amazonlinux} = "amzn1" ] ; then
 service mysqld start
+else
+systemctl start mariadb.service
+fi
 #confファイル取り込み
 confdbhostget() {
 cat /etc/zabbix/zabbix_server.conf |grep ^DBHost=|awk '{print substr($0,index($0,"=")+1,length($0))}'
@@ -60,5 +65,10 @@ rm /tmp/grant.sql
 rm /home/ec2-user/my.cnf
 rm /home/ec2-user/my.cnf2
 #MySQL停止
+if [ ${amazonlinux} = "amzn1" ] ; then
 service mysqld stop
 chkconfig mysqld off
+else
+systemctl stop mariadb.service
+systemctl disable mariadb.service
+fi
