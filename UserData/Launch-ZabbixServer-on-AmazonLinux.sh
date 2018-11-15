@@ -67,7 +67,7 @@ cat /home/ec2-user/.mysql.secrets
 }
 dbrootpass=`dbrootpass`
 echo password = ${dbrootpass} >> /home/ec2-user/my.cnf
-echo "create database ${dbname} character set utf8 collate utf8_bin; grant all privileges on zabbix.* to ${dbuser}@localhost identified by '${dbpassword}';" > /tmp/create.sql
+echo "create database ${dbname} character set utf8 collate utf8_bin; grant all privileges on ${dbname}.* to ${dbuser}@localhost identified by '${dbpassword}';" > /tmp/create.sql
 mysql --defaults-extra-file=/home/ec2-user/my.cnf < /tmp/create.sql
 echo [mysql] >> /home/ec2-user/my.cnf-zabbix
 echo host = localhost >> /home/ec2-user/my.cnf-zabbix
