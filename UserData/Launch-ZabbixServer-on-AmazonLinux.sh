@@ -3,7 +3,6 @@
 version=3.0 #Zabbixメジャーバージョン
 minorversion=latest #Zabbixマイナーバージョン or latest
 amazonlinux=amzn2 #AmaznLinuxバージョン amzn1 or amzn2
-database=ec2 #利用BD ec2 or RDS or Aurora(ec2 onry now)
 timezone="Asia\/Tokyo" #フロントエンドタイムゾーン
 agentname=zabbix-server #ZabbixAgent名
 dbhost=localhost #DBホスト
