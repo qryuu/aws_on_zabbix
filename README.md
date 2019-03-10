@@ -7,10 +7,10 @@ EC2 on MySQL で構築したZabbixServerからAMIを作成してください。
 そのAMIから新たにローンチする際にこのスクリプトをUserDataに投入すると、RDSにデータを移行します。  
 ZabbixServer、Zabbixフロントエンドの接続先を自動的にRDSに切り替えます。</br>
 </br>
-" EC 2 on MySQL" kōsei de kōchiku shita ZabbixServer no ami o sakusei shimasu. Sono ami o riyō shite arata ni EC 2 o rōnchi suru toki ni sukuriputo o UserData ni tōnyū suru koto ni yotte, dēta o RDS ni ikō shimasu. ZabbixServer, Zabbix furontoendo no setsuzoku-saki DB o jidōtekini ikō shita RDS ni kirikaemasu.
-Create AMI of ZabbixServer built with "EC 2 on MySQL" configuration.
-When launching a new EC 2 using that AMI, we will transfer the data to RDS by inserting a script into UserData.
-ZabbixServer, Zabbix Switch the connection destination DB of the front end to RDS automatically migrated.
+First, create AMI from Zabbix server built with EC2 of MySQL configuration.
+When starting a new EC 2 instance from the created AMI, please input Zabbix for for RDS.sh into UserData.
+Automatically migrate DB to RDS.
+In addition, Zabbix for RDS.sh automatically switches the connection destination of Zabbix server and ZabbixWEB to RDS.
 </br>
 ## /UserData/Launch-ZabbixProxy-on-AmazonLinux.sh
 Amazon Linux にZabbixProxyを自動構築します。</br>
