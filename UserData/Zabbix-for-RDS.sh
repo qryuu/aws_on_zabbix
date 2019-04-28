@@ -58,6 +58,20 @@ mysql --defaults-extra-file=/home/ec2-user/my.cnf2 -N ${dbname} < /tmp/zabbix_db
 #db権限変更
 echo "grant all privileges on ${dbname}.* to ${dbuser}@\`%\` identified by '${dbpassword}';" > /tmp/grant.sql
 mysql --defaults-extra-file=/home/ec2-user/my.cnf2 < /tmp/grant.sql
+#MySQLテンプレート設定
+if [ -e /var/lib/zabbix ]; then
+    # 存在する場合
+mv /var/lib/zabbix/.my.cnf /var/lib/zabbix/.my.cnf.org
+cp /home/ec2-user/my.cnf /var/lib/zabbix/.my.cnf
+chown zabbix.zabbix /var/lib/zabbix/.my.cnf
+chmod 644 /var/lib/zabbix/.my.cnf
+else
+    # 存在しない場合
+mkdir /var/lib/zabbix
+cp /home/ec2-user/my.cnf /var/lib/zabbix/.my.cnf
+chown zabbix.zabbix /var/lib/zabbix/.my.cnf
+chmod 644 /var/lib/zabbix/.my.cnf 
+fi
 #作業ファイル削除
 rm /tmp/zabbix_db.sql
 rm /tmp/create.sql
