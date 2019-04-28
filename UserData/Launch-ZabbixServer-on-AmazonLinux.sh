@@ -107,6 +107,12 @@ sed -i -e "s/Hostname=Zabbix server/Hostname=${agentname}/g" /etc/zabbix/zabbix_
 sed -i -e "s/# RefreshActiveChecks=120/RefreshActiveChecks=60/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# UnsafeUserParameters=0/UnsafeUserParameters=1/g" /etc/zabbix/zabbix_agentd.conf
 
+#MySQLテンプレート設定
+mkdir /var/lib/zabbix
+cp /home/ec2-user/my.cnf /var/lib/zabbix/.my.cnf
+chown zabbix.zabbix /var/lib/zabbix/.my.cnf
+chmod 644 /var/lib/zabbix/.my.cnf
+
 #psk設定
 if [ ${encryption} = "psk" ] ; then
 sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=psk/g" /etc/zabbix/zabbix_agentd.conf
