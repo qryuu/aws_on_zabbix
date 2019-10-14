@@ -1,6 +1,6 @@
 #!/bin/bash
 #変数宣言
-amazonlinux=amzn1 #AmaznLinuxバージョン amzn1 or amzn2
+amazonlinux=amzn2 #AmaznLinuxバージョン amzn1 or amzn2
 rdsnama= #RDSエンドポイントを入力
 rdsuser= #RDSMasterユーザ名
 rdspassword= #RDSMasterパスワード
