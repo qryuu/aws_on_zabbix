@@ -25,22 +25,22 @@ echo gpgcheck=0 >> /etc/yum.repos.d/zabbix.repo
 
 #パッケージインストール
 yum update
-if [ ${version} -ge 5.0 ]  && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
+if [ `echo "${version} >= 5.0" | bc` == 1 ]  && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
 amazon-linux-extras install php7.2 epel -y
 yum install zabbix-server-mysql zabbix-web-mysql-scl zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender httpd mariadb mariadb-server -y
-elif [ ${version} -ge 5.0 ]  && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
+elif [ `echo "${version} >= 5.0" | bc` == 1 ]  && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
 amazon-linux-extras install php7.2 epel -y
 yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion}-scl zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} httpd mariadb mariadb-server -y
-elif [ ${version} -lt 5.0 ] && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
+elif [ `echo "${version} < 5.0" | bc` == 1 ] && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
 yum install --enablerepo=epel iksemel iksemel-devel -y
 yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mysql56 mysql56-server httpd24 -y
-elif [ ${version} -lt 5.0 ] && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
+elif [ `echo "${version} < 5.0" | bc` == 1 ] && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
 yum install --enablerepo=epel iksemel iksemel-devel -y
 yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} mysql56 mysql56-server httpd24 -y
-elif [ ${version} -lt 5.0 ] && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
+elif [ `echo "${version} < 5.0" | bc` == 1 ] && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
 amazon-linux-extras install epel -y
 yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender httpd mariadb mariadb-server -y
-elif [ ${version} -lt 5.0 ] && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
+elif [ `echo "${version} < 5.0" | bc` == 1 ] && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
 amazon-linux-extras install epel -y
 yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} httpd mariadb mariadb-server -y
 else
