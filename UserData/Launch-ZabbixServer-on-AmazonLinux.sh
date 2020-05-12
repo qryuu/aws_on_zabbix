@@ -48,7 +48,7 @@ echo NotSupport
 fi
 
 #MySql起動
-if [ ${amazonlinux} = "amzn1" ] ; then
+if [ ${amazonlinux} = "amzn1" ]; then
 service mysqld start
 else
 systemctl start mariadb.service
@@ -85,7 +85,7 @@ docversioncheck() {
 ls /usr/share/doc/ |grep zabbix-server |awk '{sub("^.*-","");sub("/$",""); print $0}'
 }
 docversion=`docversioncheck`
-if [ ${version} = "2.2" ] ; then
+if [ ${version} = "2.2" ]; then
 cat "/usr/share/doc/zabbix-server-mysql-${docversion}/schema.sql" | mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix
 cat "/usr/share/doc/zabbix-server-mysql-${docversion}/images.sql" | mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix
 cat "/usr/share/doc/zabbix-server-mysql-${docversion}/data.sql" | mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix 
@@ -122,7 +122,7 @@ chown zabbix.zabbix /var/lib/zabbix/.my.cnf
 chmod 644 /var/lib/zabbix/.my.cnf
 
 #psk設定
-if [ ${encryption} = "psk" ] ; then
+if [ ${encryption} = "psk" ]; then
 sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=psk/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# TLSAccept=unencrypted/TLSAccept=psk/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# TLSPSKIdentity=/TLSPSKIdentity=${pskid}/g" /etc/zabbix/zabbix_agentd.conf
@@ -134,7 +134,7 @@ chmod 400 /etc/zabbix/tls/.zabbix_agentd.psk
 fi
 
 #cert設定
-if [ ${encryption} = "cert" ] ; then
+if [ ${encryption} = "cert" ]; then
 sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=cert/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# TLSAccept=unencrypted/TLSAccept=cert/g" /etc/zabbix/zabbix_agentd.conf
 sed -i -e "s/# TLSCAFile=/TLSCAFile=\/etc\/zabbix\/tls\/zabbix_ca_file/g" /etc/zabbix/zabbix_agentd.conf
@@ -150,7 +150,11 @@ chmod 400 /etc/zabbix/tls/*
 fi
 
 #Zabbix-WEB設定
+if [ `echo "${version} >= 5.0" | bc` == 1 ]; then
+sed -i -e "s/; php_value[date.timezone] = Europe\/Riga/php_value[date.timezone] = ${timezone}/g" /etc/php-fpm.d/zabbix.conf
+else
 sed -i -e "s/# php_value date.timezone Europe\/Riga/php_value date.timezone ${timezone}/g" /etc/httpd/conf.d/zabbix.conf
+fi
 
 #自動起動設定
 if [ ${amazonlinux} = "amzn1" ] ; then
