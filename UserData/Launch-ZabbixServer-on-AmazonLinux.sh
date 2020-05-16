@@ -25,12 +25,13 @@ echo gpgcheck=0 >> /etc/yum.repos.d/zabbix.repo
 
 #パッケージインストール
 yum update
+
 if [ `echo "${version} >= 5.0" | bc` == 1 ] && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ]; then
 amazon-linux-extras install lamp-mariadb10.2-php7.2 epel php7.2 -y
-yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-apache-conf zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender zabbix-js httpd mariadb-server -y
+yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-apache-conf zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender zabbix-js httpd mariadb mariadb-server -y
 elif [ `echo "${version} >= 5.0" | bc` == 1 ] && [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn2" ]; then
 amazon-linux-extras install lamp-mariadb10.2-php7.2 epel php7.2 -y
-yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-apache-conf-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} zabbix-js-${minorversion} httpd mariadb-server -y
+yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-apache-conf-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} zabbix-js-${minorversion} httpd mariadb mariadb-server -y
 elif [ `echo "${version} < 5.0" | bc` == 1 ] && [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn1" ]; then
 yum install --enablerepo=epel iksemel iksemel-devel -y
 yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mysql56 mysql56-server httpd24 -y
