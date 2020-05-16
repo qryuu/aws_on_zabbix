@@ -152,7 +152,7 @@ fi
 
 #Zabbix-WEB設定
 if [ `echo "${version} >= 5.0" | bc` == 1 ]; then
-sed -i -e "s/; php_value[date.timezone] = Europe\/Riga/php_value[date.timezone] = ${timezone}/g" /etc/php-fpm.d/zabbix.conf
+sed -i -e "s/; php_value\[date.timezone\] = Europe\/Riga/php_value\[date.timezone\] = ${timezone}/g" /etc/php-fpm.d/zabbix.conf
 else
 sed -i -e "s/# php_value date.timezone Europe\/Riga/php_value date.timezone ${timezone}/g" /etc/httpd/conf.d/zabbix.conf
 fi
