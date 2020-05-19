@@ -35,12 +35,12 @@ Please obtain the contents of /etc/zabbix/tls/.zabbix_agentd.psk file and make t
 </br>
 ## /Scripts/for_5.0_update.sh
 Amazon Linux2 上に構築された任意のZabbixServerを5.0にアップデートします。
-* 既存環境からAMIを作成し、UserDataにスクリプトを入力してローンチするか
+* 既存環境からAMIを作成し、UserDataにスクリプトを入力してローンチする
 * 既存環境にスクリプトファイルとして配置して実行する
 いずれの方法で実行することが可能です。
 </br>
 Update any ZabbixServer built on Amazon Linux2 to 5.0.
-* Either create an AMI from an existing environment and enter a script in UserData to launch it, or
+* Create an AMI from an existing environment and launch it by entering a script into UserData.
 * Place and execute as a script file in an existing environment
 It can be done either way.
 </br>
