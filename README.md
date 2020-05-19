@@ -33,3 +33,14 @@ Please submit script to UserData when launching EC2.
 When using the PSK method,
 Please obtain the contents of /etc/zabbix/tls/.zabbix_agentd.psk file and make the setting from the GUI.
 </br>
+##/Scripts/for 5.0 update.sh
+Amazon Linux2 上に構築された任意のZabbixServerを5.0にアップデートします。
+* 既存環境からAMIを作成し、UserDataにスクリプトを入力してローンチするか
+* 既存環境にスクリプトファイルとして配置して実行する
+いずれの方法で実行することが可能です。
+</br>
+Update any ZabbixServer built on Amazon Linux2 to 5.0.
+* Either create an AMI from an existing environment and enter a script in UserData to launch it, or
+* Place and execute as a script file in an existing environment
+It can be done either way.
+</br>
