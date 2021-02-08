@@ -1,6 +1,6 @@
 #!/bin/bash
 #変数宣言
-version=4.0 #Zabbixメジャーバージョン
+version=4.0 #Zabbixメジャーバージョン 3.0 to 5.0
 minorversion=latest #Zabbixマイナーバージョン or latest
 amazonlinux=amzn2 #AmaznLinuxバージョン amzn1 or amzn2
 timezone="Asia\/Tokyo" #フロントエンドタイムゾーン
