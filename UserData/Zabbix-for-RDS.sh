@@ -46,6 +46,9 @@ confdbpassword=$(get_conf_val "DBPassword")
 # ------------------------------------------------------------------------------
 # 2. データベースダンプ & RDS へのリストア
 # ------------------------------------------------------------------------------
+# 移行中のデータ不整合・新規書き込みを防ぐため、事前に Zabbix Server を停止
+systemctl stop zabbix-server.service || true
+
 if [ "${dbengine}" = "mysql" ]; then
   systemctl start mariadb.service || true
 
@@ -114,7 +117,7 @@ elif [ "${dbengine}" = "postgresql" ]; then
   # ローカルDBからダンプ
   sudo -u postgres pg_dump -d "${confdbname}" -F p > /tmp/zabbix_backup.sql
 
-  # RDS 上にユーザー & データベース作成
+  # RDS 上にユーザー作成 & 権限付与
   PGPASSWORD="${rdspassword}" psql -h "${rdshost}" -U "${rdsuser}" -d postgres <<EOF
 DO \$\$
 BEGIN
@@ -123,8 +126,16 @@ BEGIN
   END IF;
 END
 \$\$;
-CREATE DATABASE ${dbname} OWNER ${dbuser};
+GRANT ${dbuser} TO ${rdsuser};
 EOF
+
+  # RDS 上のデータベース存在チェック & 作成/オーナー設定
+  db_exists=$(PGPASSWORD="${rdspassword}" psql -h "${rdshost}" -U "${rdsuser}" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${dbname}'" 2>/dev/null || echo "0")
+  if [ "${db_exists}" != "1" ]; then
+    PGPASSWORD="${rdspassword}" psql -h "${rdshost}" -U "${rdsuser}" -d postgres -c "CREATE DATABASE ${dbname} OWNER ${dbuser};"
+  else
+    PGPASSWORD="${rdspassword}" psql -h "${rdshost}" -U "${rdsuser}" -d postgres -c "ALTER DATABASE ${dbname} OWNER TO ${dbuser};"
+  fi
 
   # RDS へリストア
   PGPASSWORD="${dbpassword}" psql -h "${rdshost}" -U "${dbuser}" -d "${dbname}" < /tmp/zabbix_backup.sql

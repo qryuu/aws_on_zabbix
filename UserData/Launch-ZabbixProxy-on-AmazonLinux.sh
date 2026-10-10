@@ -222,6 +222,13 @@ elif [ "${dbengine}" = "postgresql" ]; then
   if [ ! -s "/var/lib/pgsql/data/PG_VERSION" ]; then
     postgresql-setup --initdb || true
   fi
+
+  # pg_hba.conf でローカルTCP接続 (127.0.0.1/32, ::1/128) の ident 認証を scram-sha-256 に更新
+  PG_HBA="/var/lib/pgsql/data/pg_hba.conf"
+  if [ -f "${PG_HBA}" ]; then
+    sed -i -E 's/(host\s+all\s+all\s+(127\.0\.0\.1\/32|::1\/128)\s+)ident/\1scram-sha-256/' "${PG_HBA}"
+  fi
+
   systemctl start postgresql.service
   systemctl enable postgresql.service
 
@@ -232,7 +239,7 @@ EOF
 
   # スキーマインポート
   if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
-    zcat "${SCHEMA_FILE}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+    zcat "${SCHEMA_FILE}" | PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
   fi
 
   # PostgreSQL 圧縮チューニング (LZ4 + toast_tuple_target=128)

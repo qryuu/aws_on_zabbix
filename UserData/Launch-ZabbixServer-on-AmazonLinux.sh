@@ -246,6 +246,12 @@ elif [ "${dbengine}" = "postgresql" ]; then
     postgresql-setup --initdb || true
   fi
 
+  # pg_hba.conf でローカルTCP接続 (127.0.0.1/32, ::1/128) の ident 認証を scram-sha-256 に更新
+  PG_HBA="/var/lib/pgsql/data/pg_hba.conf"
+  if [ -f "${PG_HBA}" ]; then
+    sed -i -E 's/(host\s+all\s+all\s+(127\.0\.0\.1\/32|::1\/128)\s+)ident/\1scram-sha-256/' "${PG_HBA}"
+  fi
+
   # TimescaleDB preload 設定
   if [ "${enable_timescaledb}" = "true" ]; then
     PG_CONF="/var/lib/pgsql/data/postgresql.conf"
@@ -268,7 +274,7 @@ EOF
 
   # スキーマインポート
   if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
-    zcat "${SCHEMA_FILE}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+    zcat "${SCHEMA_FILE}" | PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
   fi
 
   # TimescaleDB 拡張の適用
@@ -278,7 +284,7 @@ EOF
     
     TIMESCALE_SCHEMA=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "schema.sql" 2>/dev/null | grep "timescaledb" | head -n 1 || true)
     if [ -n "${TIMESCALE_SCHEMA}" ] && [ -f "${TIMESCALE_SCHEMA}" ]; then
-      cat "${TIMESCALE_SCHEMA}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname} || true
+      cat "${TIMESCALE_SCHEMA}" | PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname} || true
     fi
   fi
 
