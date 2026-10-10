@@ -13,6 +13,9 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 version="7.0"                      # Zabbix メジャーバージョン (7.0 または 6.0)
 dbengine="mysql"                   # DBエンジン: mysql (MariaDB) または postgresql (PostgreSQL)
+enable_db_compression="true"       # DB圧縮チューニング: true または false
+enable_timescaledb="false"         # TimescaleDB 構成: true または false (dbengine=postgresql 時のみ有効)
+
 timezone="Asia\/Tokyo"             # フロントエンドのタイムゾーン (スラッシュはエスケープ)
 agentname="zabbix-server"          # Zabbix Agent ホスト名
 dbhost="localhost"                 # DB ホスト
@@ -32,7 +35,6 @@ keyfile=""                         # 秘密鍵ファイル URL
 # ------------------------------------------------------------------------------
 # 1. CPU アーキテクチャ & Amazon Linux バージョンの完全自動判定
 # ------------------------------------------------------------------------------
-# CPU アーキテクチャ自動判定
 RAW_ARCH=$(uname -m)
 case "${RAW_ARCH}" in
   x86_64)
@@ -81,6 +83,8 @@ echo "========================================================"
 echo " Detected OS: ${amazonlinux} (${ARCH})"
 echo " Target Zabbix Version: ${version}"
 echo " Database Engine: ${dbengine}"
+echo " DB Compression Tuning: ${enable_db_compression}"
+echo " TimescaleDB Enabled: ${enable_timescaledb}"
 echo "========================================================"
 
 # ------------------------------------------------------------------------------
@@ -121,6 +125,21 @@ elif [ "${dbengine}" = "postgresql" ]; then
     amazon-linux-extras install -y postgresql14 php7.2 || true
     ${PKG_MGR} install -y postgresql-server zabbix-server-pgsql zabbix-web-pgsql ${COMMON_PKGS}
   fi
+
+  # TimescaleDB 拡張パッケージの導入 (希望時)
+  if [ "${enable_timescaledb}" = "true" ]; then
+    echo "Setting up TimescaleDB repository..."
+    if [ "${amazonlinux}" = "amzn2023" ] && [ "${ARCH}" = "x86_64" ]; then
+      curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.rpm.sh | bash || true
+      ${PKG_MGR} install -y timescaledb-2-postgresql-15 || true
+    elif [ "${amazonlinux}" = "amzn2" ]; then
+      curl -s https://packagecloud.io/install/repositories/timescale/timescaledb/script.rpm.sh | bash || true
+      ${PKG_MGR} install -y timescaledb-2-postgresql-14 || true
+    else
+      echo "Note: TimescaleDB official RPM might not be available for ${amazonlinux} on ${ARCH}."
+      echo "Proceeding with standard PostgreSQL with LZ4 compression."
+    fi
+  fi
 else
   echo "Unsupported dbengine: ${dbengine}" >&2
   exit 1
@@ -129,12 +148,22 @@ fi
 # ------------------------------------------------------------------------------
 # 4. データベースの初期設定 & スキーマのインポート
 # ------------------------------------------------------------------------------
+# スキーマファイルの探索 (Zabbix 6.0/7.0 は zabbix-sql-scripts 配下)
 SCHEMA_FILE=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "server.sql.gz" 2>/dev/null | head -n 1 || true)
 if [ -z "${SCHEMA_FILE}" ]; then
   SCHEMA_FILE=$(find /usr/share -name "server.sql.gz" 2>/dev/null | head -n 1 || true)
 fi
 
 if [ "${dbengine}" = "mysql" ]; then
+  # InnoDB 圧縮設定の反映
+  if [ "${enable_db_compression}" = "true" ]; then
+    mkdir -p /etc/my.cnf.d
+    cat <<EOF > /etc/my.cnf.d/zabbix_compression.cnf
+[mysqld]
+innodb_file_per_table = 1
+EOF
+  fi
+
   systemctl start mariadb.service
   systemctl enable mariadb.service
 
@@ -176,6 +205,19 @@ EOF
 
   mysql --defaults-file=/root/.my.cnf -e "SET GLOBAL log_bin_trust_function_creators = 0;"
 
+  # MySQL / MariaDB 圧縮チューニングの適用
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying InnoDB ROW_FORMAT=COMPRESSED table tuning..."
+    mysql --defaults-file=/root/.my.cnf "${dbname}" <<'EOF' || true
+ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE events ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+EOF
+  fi
+
   # Zabbix Agent テンプレート用接続設定
   mkdir -p /var/lib/zabbix
   cat <<EOF > /var/lib/zabbix/.my.cnf
@@ -190,6 +232,19 @@ elif [ "${dbengine}" = "postgresql" ]; then
   if [ ! -s "/var/lib/pgsql/data/PG_VERSION" ]; then
     postgresql-setup --initdb || true
   fi
+
+  # TimescaleDB preload 設定
+  if [ "${enable_timescaledb}" = "true" ]; then
+    PG_CONF="/var/lib/pgsql/data/postgresql.conf"
+    if [ -f "${PG_CONF}" ]; then
+      if grep -q "shared_preload_libraries" "${PG_CONF}"; then
+        sed -i -E "s/^[# ]*shared_preload_libraries[[:space:]]*=.*/shared_preload_libraries = 'timescaledb'/" "${PG_CONF}"
+      else
+        echo "shared_preload_libraries = 'timescaledb'" >> "${PG_CONF}"
+      fi
+    fi
+  fi
+
   systemctl start postgresql.service
   systemctl enable postgresql.service
 
@@ -201,6 +256,38 @@ EOF
   # スキーマインポート
   if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
     zcat "${SCHEMA_FILE}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+  fi
+
+  # TimescaleDB 拡張の適用
+  if [ "${enable_timescaledb}" = "true" ]; then
+    echo "Enabling TimescaleDB extension and applying hypertable schema..."
+    sudo -u postgres psql -d "${dbname}" -c "CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;" || true
+    
+    TIMESCALE_SCHEMA=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "schema.sql" 2>/dev/null | grep "timescaledb" | head -n 1 || true)
+    if [ -n "${TIMESCALE_SCHEMA}" ] && [ -f "${TIMESCALE_SCHEMA}" ]; then
+      cat "${TIMESCALE_SCHEMA}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname} || true
+    fi
+  fi
+
+  # PostgreSQL 圧縮チューニング (LZ4 + toast_tuple_target=128)
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying PostgreSQL LZ4 and TOAST compression tuning..."
+    sudo -u postgres psql -d "${dbname}" <<'EOF' || true
+ALTER SYSTEM SET default_toast_compression = 'lz4';
+ALTER SYSTEM SET max_wal_size = '256MB';
+SELECT pg_reload_conf();
+
+ALTER TABLE history_text SET (toast_tuple_target = 128);
+ALTER TABLE history_text ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_log  SET (toast_tuple_target = 128);
+ALTER TABLE history_log  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_str  SET (toast_tuple_target = 128);
+ALTER TABLE history_str  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE items        SET (toast_tuple_target = 128);
+ALTER TABLE item_preproc SET (toast_tuple_target = 128);
+ALTER TABLE events       SET (toast_tuple_target = 128);
+ALTER TABLE auditlog     SET (toast_tuple_target = 128);
+EOF
   fi
 fi
 

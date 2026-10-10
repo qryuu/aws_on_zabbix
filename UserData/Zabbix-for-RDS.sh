@@ -11,6 +11,7 @@ set -euo pipefail
 # パラメータ設定
 # ------------------------------------------------------------------------------
 dbengine="mysql"                   # DBエンジン: mysql または postgresql
+enable_db_compression="true"       # DB圧縮チューニング: true または false
 rdshost=""                         # RDS エンドポイント (FQDN)
 rdsuser="admin"                    # RDS マスターユーザー名
 rdspassword=""                     # RDS マスターパスワード
@@ -69,6 +70,7 @@ EOF
   # ローカルDBからダンプ
   mysqldump --defaults-file=/root/.my_local.cnf \
     --single-transaction \
+    --quick \
     --default-character-set=utf8mb4 \
     "${confdbname}" > /tmp/zabbix_backup.sql
 
@@ -83,6 +85,19 @@ EOF
 
   # RDS へリストア
   mysql --defaults-file=/root/.my_rds.cnf "${dbname}" < /tmp/zabbix_backup.sql
+
+  # 圧縮チューニングの適用
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying InnoDB table compression tuning on RDS MySQL..."
+    mysql --defaults-file=/root/.my_rds.cnf "${dbname}" <<'EOF' || true
+ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE events ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+EOF
+  fi
 
   mysql --defaults-file=/root/.my_rds.cnf -e "SET GLOBAL log_bin_trust_function_creators = 0;" || true
 
@@ -113,6 +128,23 @@ EOF
 
   # RDS へリストア
   PGPASSWORD="${dbpassword}" psql -h "${rdshost}" -U "${dbuser}" -d "${dbname}" < /tmp/zabbix_backup.sql
+
+  # 圧縮チューニングの適用 (LZ4 + toast_tuple_target=128)
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying PostgreSQL LZ4 and TOAST compression tuning on RDS..."
+    PGPASSWORD="${dbpassword}" psql -h "${rdshost}" -U "${dbuser}" -d "${dbname}" <<'EOF' || true
+ALTER TABLE history_text SET (toast_tuple_target = 128);
+ALTER TABLE history_text ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_log  SET (toast_tuple_target = 128);
+ALTER TABLE history_log  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_str  SET (toast_tuple_target = 128);
+ALTER TABLE history_str  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE items        SET (toast_tuple_target = 128);
+ALTER TABLE item_preproc SET (toast_tuple_target = 128);
+ALTER TABLE events       SET (toast_tuple_target = 128);
+ALTER TABLE auditlog     SET (toast_tuple_target = 128);
+EOF
+  fi
 
   # 一時ファイル削除
   rm -f /tmp/zabbix_backup.sql

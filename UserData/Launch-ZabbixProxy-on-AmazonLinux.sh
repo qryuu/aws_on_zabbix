@@ -13,6 +13,8 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 version="7.0"                      # Zabbix メジャーバージョン (7.0 または 6.0)
 dbengine="mysql"                   # DBエンジン: mysql (MariaDB) または postgresql (PostgreSQL)
+enable_db_compression="true"       # DB圧縮チューニング: true または false
+
 proxyname="zabbix-proxy"           # Zabbix Proxy ホスト名
 agentname="zabbix-proxy-agent"     # Zabbix Agent ホスト名
 server="10.0.0.10"                 # 接続先 Zabbix Server の IP または FQDN
@@ -81,6 +83,7 @@ echo "========================================================"
 echo " Detected OS: ${amazonlinux} (${ARCH})"
 echo " Target Zabbix Version: ${version}"
 echo " Database Engine: ${dbengine}"
+echo " DB Compression Tuning: ${enable_db_compression}"
 echo "========================================================"
 
 # ------------------------------------------------------------------------------
@@ -135,6 +138,15 @@ if [ -z "${SCHEMA_FILE}" ]; then
 fi
 
 if [ "${dbengine}" = "mysql" ]; then
+  # InnoDB 圧縮設定の反映
+  if [ "${enable_db_compression}" = "true" ]; then
+    mkdir -p /etc/my.cnf.d
+    cat <<EOF > /etc/my.cnf.d/zabbix_compression.cnf
+[mysqld]
+innodb_file_per_table = 1
+EOF
+  fi
+
   systemctl start mariadb.service
   systemctl enable mariadb.service
 
@@ -173,6 +185,18 @@ EOF
     zcat "${SCHEMA_FILE}" | mysql --defaults-file=/root/.my.cnf "${dbname}"
   fi
 
+  # MySQL / MariaDB 圧縮チューニングの適用
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying InnoDB ROW_FORMAT=COMPRESSED table tuning..."
+    mysql --defaults-file=/root/.my.cnf "${dbname}" <<'EOF' || true
+ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+EOF
+  fi
+
   # Zabbix Agent テンプレート用接続設定
   mkdir -p /var/lib/zabbix
   cat <<EOF > /var/lib/zabbix/.my.cnf
@@ -198,6 +222,23 @@ EOF
   # スキーマインポート
   if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
     zcat "${SCHEMA_FILE}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+  fi
+
+  # PostgreSQL 圧縮チューニング (LZ4 + toast_tuple_target=128)
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying PostgreSQL LZ4 and TOAST compression tuning..."
+    sudo -u postgres psql -d "${dbname}" <<'EOF' || true
+ALTER SYSTEM SET default_toast_compression = 'lz4';
+ALTER SYSTEM SET max_wal_size = '256MB';
+SELECT pg_reload_conf();
+
+ALTER TABLE history_text SET (toast_tuple_target = 128);
+ALTER TABLE history_text ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_log  SET (toast_tuple_target = 128);
+ALTER TABLE history_log  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_str  SET (toast_tuple_target = 128);
+ALTER TABLE history_str  ALTER COLUMN value SET COMPRESSION lz4;
+EOF
   fi
 fi
 
