@@ -17,7 +17,7 @@ Automation and operation scripts for Zabbix on AWS (Amazon Linux 2023 / Amazon L
   - **MySQL (MariaDB)**: `history`, `history_uint`, `history_str`, `history_text`, `history_log`, `events` テーブルに `ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8` を適用
 - **TimescaleDB 構成の選択対応**:
   - 新規初期構築時に時系列ハイパーテーブルおよび列指向圧縮（Delta-of-Delta / Gorilla XOR）を活用したい場合、`enable_timescaledb="true"` を指定可能
-- **Zabbix 6.0 LTS / 7.0 LTS 対応**: 最新の安定版 LTS バージョンに対応
+- **Zabbix 8.0 LTS (先行対応) / 7.0 LTS / 6.0 LTS 対応**: 最新の安定版 LTS およびリリース予定の次期 LTS バージョンに対応
 
 ---
 
@@ -35,7 +35,7 @@ Provide this script into **UserData** when launching an EC2 instance. OS and CPU
 
 | パラメータ | デフォルト値 | 説明 |
 |---|---|---|
-| `version` | `7.0` | Zabbix バージョン (`7.0` または `6.0`) |
+| `version` | `7.0` | Zabbix バージョン (`8.0`, `7.0`, または `6.0`) |
 | `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
 | `enable_db_compression` | `true` | DB 圧縮チューニングの有効化 (`true` または `false`) |
 | `enable_timescaledb` | `false` | TimescaleDB 構成の有効化 (`true` または `false`、PostgreSQL 時のみ) |
@@ -46,11 +46,10 @@ Provide this script into **UserData** when launching an EC2 instance. OS and CPU
 | `dbpassword` | `zabbix_password` | データベースパスワード |
 | `encryption` | `unencrypted` | 通信暗号化方式 (`unencrypted`, `psk`, `cert`) |
 
-#### 設計の選定ポイント（PostgreSQL vs TimescaleDB）
-- **標準 PostgreSQL 15 + LZ4 圧縮 (`enable_timescaledb="false"`)**:
-  - アイテムごとに異なる保持期間（例: 気象データは5年、OS監視データは7日など）を設定・混在させたい場合や、AWS Graviton (`aarch64`) でのシンプルな運用・保守性を最重視する場合に最適です。短文 LZ4 圧縮によりルート EBS (10GB) 運用でも十分な空き領域を維持できます。
-- **TimescaleDB 構成 (`enable_timescaledb="true"`)**:
-  - 初期構築で全アイテムの保持期間を一律（グローバル設定）で管理する運用設計とし、時系列データの高度な列指向圧縮（約80%削減）や Housekeeper 負荷ゼロ化を重視する場合に選択してください。
+#### Zabbix 8.0 LTS を選択する場合の留意点
+- **OS要件**: **Amazon Linux 2023 (AL2023) が必須** です（Amazon Linux 2 はサポート対象外となります）。
+- **DB要件**: MariaDB 10.11+ / MySQL 8.4 LTS+ / PostgreSQL 15.0+ が必須です。AL2023 のローカル DB では **`postgresql` (PostgreSQL 15)** の選択を強く推奨します。
+- **PHP要件**: PHP 8.2〜8.5 が必須（AL2023 標準で対応）。
 
 ---
 
@@ -59,14 +58,11 @@ Provide this script into **UserData** when launching an EC2 instance. OS and CPU
 Amazon Linux 2023 / Amazon Linux 2 に Zabbix Proxy を自動構築します。  
 EC2 インスタンスのローンチ時に **UserData** に投入してください。
 
-Automatically deploys Zabbix Proxy on Amazon Linux 2023 or Amazon Linux 2.  
-Provide this script into **UserData** when launching an EC2 instance.
-
 #### 主要パラメータ / Main Parameters
 
 | パラメータ | デフォルト値 | 説明 |
 |---|---|---|
-| `version` | `7.0` | Zabbix バージョン (`7.0` または `6.0`) |
+| `version` | `7.0` | Zabbix バージョン (`8.0`, `7.0`, または `6.0`) |
 | `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
 | `enable_db_compression` | `true` | DB 圧縮チューニング (`true` または `false`) |
 | `proxyname` | `zabbix-proxy` | Zabbix Proxy ホスト名 |
@@ -100,6 +96,7 @@ EC2 ローカル DB (MySQL / PostgreSQL) で稼働している Zabbix Server の
 
 ### 4. アップデートスクリプト / Update Scripts
 
+- **`/Scripts/for_8.0_update.sh`**: Amazon Linux 2023 上の Zabbix Server を 8.0 LTS にアップデートします。
 - **`/Scripts/for_7.0_update.sh`**: Amazon Linux 2023 上の Zabbix Server を 7.0 LTS にアップデートします。
 - **`/Scripts/for_6.0_update.sh`**: Amazon Linux 2 / Amazon Linux 2023 上の Zabbix Server を 6.0 LTS にアップデートします。
 - **`/Scripts/for_5.0_update.sh`**: Amazon Linux 2 上の既存 Zabbix 4.0 環境を 5.0 LTS にアップデートします。
