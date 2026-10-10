@@ -1,54 +1,100 @@
 # aws_on_zabbix
 
-AWS上でのZabbix運用用スクリプト  
-Zabbix operation script on AWS
+AWS 上での Zabbix 運用・自動構築スクリプト集  
+Automation and operation scripts for Zabbix on AWS (Amazon Linux 2023 / Amazon Linux 2)
 
-## /UserData/Zabbix-for-RDS.sh
+---
 
-EC2 on MySQL で構築したZabbixServerからAMIを作成してください。
-そのAMIから新たにローンチする際にこのスクリプトをUserDataに投入すると、RDSにデータを移行します。  
-ZabbixServer、Zabbixフロントエンドの接続先を自動的にRDSに切り替えます。  
+## 主な特徴 / Features
 
-First, create AMI from Zabbix server built with EC2 of MySQL configuration.
-When starting a new EC 2 instance from the created AMI, please input Zabbix for for RDS.sh into UserData.
-Automatically migrate DB to RDS.
-In addition, Zabbix for RDS.sh automatically switches the connection destination of Zabbix server and ZabbixWEB to RDS.
+- **Zabbix 公式リポジトリ対応**: `repo.zabbix.com` から公式 RPM パッケージを取得
+- **CPU アーキテクチャ自動判定**: `x86_64` (Intel/AMD) および `aarch64` (AWS Graviton) を自動検出
+- **最新 OS 対応**: Amazon Linux 2023 (`amzn2023`) および Amazon Linux 2 (`amzn2`) に対応（旧 Amazon Linux 1 は廃止）
+- **DB エンジン選択**: MySQL (MariaDB) または PostgreSQL をパラメータで選択可能
+- **Zabbix 6.0 LTS / 7.0 LTS 対応**: 最新の安定版 LTS バージョンに対応
 
-## /UserData/Launch-ZabbixProxy-on-AmazonLinux.sh
+---
 
-Amazon Linux にZabbixProxyを自動構築します。  
-EC2をローンチする際にUserDataにスクリプトを投入してください。
-PSK方式を使う場合は、
-/etc/zabbix/tls/.zabbix_proxy.pskファイルの内容を取得して、GUIから設定を行ってください。  
-  
-Automatically build ZabbixProxy when launching Amazon Linux.
-Please enter the script in UserData.
-To use the PSK method, obtain the contents of the /etc/zabbix/tls/.zabbix_proxy.psk file and make settings from the GUI.
+## スクリプト一覧 / Scripts
 
-## /UserData/Launch-ZabbixServer-on-AmazonLinux.sh
+### 1. `/UserData/Launch-ZabbixServer-on-AmazonLinux.sh`
 
-Amazon Linux にZabbixServerを自動構築します。  
-EC2をローンチする際にUserDataにスクリプトを投入してください。
-PSK方式を使う場合は、
-/etc/zabbix/tls/.zabbix_agentd.pskファイルの内容を取得して、GUIから設定を行ってください。  
-  
-Automatically build ZabbixServer on Amazon Linux.
-Please submit script to UserData when launching EC2.
-When using the PSK method,
-Please obtain the contents of /etc/zabbix/tls/.zabbix_agentd.psk file and make the setting from the GUI.
+Amazon Linux 2023 / Amazon Linux 2 に Zabbix Server および Web フロントエンドを自動構築します。  
+EC2 インスタンスの新規ローンチ時に **UserData** に投入してください。
 
-## /Scripts/for_5.0_update.sh
+Automatically deploys Zabbix Server and Web frontend on Amazon Linux 2023 or Amazon Linux 2.  
+Provide this script into **UserData** when launching an EC2 instance.
 
-Amazon Linux2 上に構築された任意のZabbixServerを5.0にアップデートします。
+#### 主要パラメータ / Main Parameters
 
-* 既存環境からAMIを作成し、UserDataにスクリプトを入力してローンチする
-* 既存環境にスクリプトファイルとして配置して実行する
+| パラメータ | デフォルト値 | 説明 |
+|---|---|---|
+| `version` | `7.0` | Zabbix バージョン (`7.0` または `6.0`) |
+| `amazonlinux` | `auto` | OS バージョン (`amzn2023`, `amzn2`, `auto` で自動判定) |
+| `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
+| `timezone` | `Asia\/Tokyo` | PHP フロントエンドのタイムゾーン |
+| `agentname` | `zabbix-server` | Zabbix Agent ホスト名 |
+| `dbname` | `zabbix` | データベース名 |
+| `dbuser` | `zabbix` | データベースユーザー名 |
+| `dbpassword` | `zabbix_password` | データベースパスワード |
+| `encryption` | `unencrypted` | 通信暗号化方式 (`unencrypted`, `psk`, `cert`) |
 
-いずれの方法で実行することが可能です。
-</br>
-Update any ZabbixServer built on Amazon Linux2 to 5.0.
+---
 
-* Create an AMI from an existing environment and launch it by entering a script into UserData.
-* Place and execute as a script file in an existing environment
+### 2. `/UserData/Launch-ZabbixProxy-on-AmazonLinux.sh`
 
-It can be done either way.  
+Amazon Linux 2023 / Amazon Linux 2 に Zabbix Proxy を自動構築します。  
+EC2 インスタンスのローンチ時に **UserData** に投入してください。
+
+Automatically deploys Zabbix Proxy on Amazon Linux 2023 or Amazon Linux 2.  
+Provide this script into **UserData** when launching an EC2 instance.
+
+#### 主要パラメータ / Main Parameters
+
+| パラメータ | デフォルト値 | 説明 |
+|---|---|---|
+| `version` | `7.0` | Zabbix バージョン (`7.0` または `6.0`) |
+| `amazonlinux` | `auto` | OS バージョン (`amzn2023`, `amzn2`, `auto` で自動判定) |
+| `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
+| `proxyname` | `zabbix-proxy` | Zabbix Proxy ホスト名 |
+| `server` | `10.0.0.10` | 接続先 Zabbix Server の IP または FQDN |
+| `dbname` | `zabbix_proxy` | Proxy 用データベース名 |
+| `dbuser` | `zabbix` | データベースユーザー名 |
+| `dbpassword` | `zabbix_password` | データベースパスワード |
+| `encryption` | `unencrypted` | 通信暗号化方式 (`unencrypted`, `psk`, `cert`) |
+
+---
+
+### 3. `/UserData/Zabbix-for-RDS.sh`
+
+EC2 ローカル DB (MySQL / PostgreSQL) で稼働している Zabbix Server のデータを、AWS RDS (Amazon Aurora / RDS MySQL / RDS PostgreSQL) へ自動移行し、接続先を切り替えます。  
+既存の EC2 から作成した AMI を新しくローンチする際、UserData に投入して実行します。
+
+Automatically migrates local Zabbix database to AWS RDS (MySQL / PostgreSQL) and switches Zabbix Server and Web frontend configuration to point to RDS.  
+Run this script via UserData when launching a new EC2 instance from an existing AMI.
+
+#### 主要パラメータ / Main Parameters
+
+| パラメータ | デフォルト値 | 説明 |
+|---|---|---|
+| `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
+| `rdshost` | (必須) | RDS エンドポイント (FQDN) |
+| `rdsuser` | `admin` | RDS マスターユーザー名 |
+| `rdspassword` | (必須) | RDS マスターパスワード |
+| `dbname` | `zabbix` | 移行先データベース名 |
+| `dbuser` | `zabbix` | 移行先 Zabbix 用ユーザー名 |
+| `dbpassword` | `zabbix_password` | 移行先 Zabbix 用パスワード |
+
+---
+
+### 4. アップデートスクリプト / Update Scripts
+
+- **`/Scripts/for_7.0_update.sh`**: Amazon Linux 2023 上の Zabbix Server を 7.0 LTS にアップデートします。
+- **`/Scripts/for_6.0_update.sh`**: Amazon Linux 2 / Amazon Linux 2023 上の Zabbix Server を 6.0 LTS にアップデートします。
+- **`/Scripts/for_5.0_update.sh`**: Amazon Linux 2 上の既存 Zabbix 4.0 環境を 5.0 LTS にアップデートします。
+
+---
+
+## ライセンス / License
+
+MIT License
