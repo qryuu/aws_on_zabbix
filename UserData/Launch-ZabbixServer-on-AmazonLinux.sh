@@ -2,8 +2,8 @@
 # ==============================================================================
 # Launch-ZabbixServer-on-AmazonLinux.sh
 # 
-# Amazon Linux 2023 / Amazon Linux 2 上に Zabbix Server (6.0 LTS / 7.0 LTS) を
-# 自動構築する EC2 UserData スクリプト
+# Amazon Linux 2023 / Amazon Linux 2 上に Zabbix Server (8.0 LTS / 7.0 LTS / 6.0 LTS)
+# を自動構築する EC2 UserData スクリプト
 # (CPU アーキテクチャおよび Amazon Linux バージョンは完全自動判別)
 # ==============================================================================
 set -euo pipefail
@@ -11,7 +11,7 @@ set -euo pipefail
 # ------------------------------------------------------------------------------
 # パラメータ設定
 # ------------------------------------------------------------------------------
-version="7.0"                      # Zabbix メジャーバージョン (7.0 または 6.0)
+version="7.0"                      # Zabbix メジャーバージョン (8.0, 7.0, または 6.0)
 dbengine="mysql"                   # DBエンジン: mysql (MariaDB) または postgresql (PostgreSQL)
 enable_db_compression="true"       # DB圧縮チューニング: true または false
 enable_timescaledb="false"         # TimescaleDB 構成: true または false (dbengine=postgresql 時のみ有効)
@@ -35,6 +35,7 @@ keyfile=""                         # 秘密鍵ファイル URL
 # ------------------------------------------------------------------------------
 # 1. CPU アーキテクチャ & Amazon Linux バージョンの完全自動判定
 # ------------------------------------------------------------------------------
+# CPU アーキテクチャ自動判定
 RAW_ARCH=$(uname -m)
 case "${RAW_ARCH}" in
   x86_64)
@@ -77,6 +78,18 @@ elif grep -qi 'Amazon Linux release 2' /etc/system-release 2>/dev/null; then
 else
   echo "Error: Unable to detect Amazon Linux version. This script only supports Amazon Linux (AL2023 / AL2)." >&2
   exit 1
+fi
+
+# Zabbix 8.0 動作要件のバリデーション
+if [ "${version}" = "8.0" ]; then
+  if [ "${amazonlinux}" != "amzn2023" ]; then
+    echo "Error: Zabbix 8.0 requires Amazon Linux 2023 or later (Amazon Linux 2 is not supported)." >&2
+    exit 1
+  fi
+  if [ "${dbengine}" = "mysql" ]; then
+    echo "Note: Zabbix 8.0 requires MariaDB 10.11+ or MySQL 8.4 LTS+."
+    echo "On Amazon Linux 2023 with local database, 'postgresql' (PostgreSQL 15+) is strongly recommended."
+  fi
 fi
 
 echo "========================================================"
@@ -148,7 +161,7 @@ fi
 # ------------------------------------------------------------------------------
 # 4. データベースの初期設定 & スキーマのインポート
 # ------------------------------------------------------------------------------
-# スキーマファイルの探索 (Zabbix 6.0/7.0 は zabbix-sql-scripts 配下)
+# スキーマファイルの探索 (Zabbix 6.0/7.0/8.0 は zabbix-sql-scripts 配下)
 SCHEMA_FILE=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "server.sql.gz" 2>/dev/null | head -n 1 || true)
 if [ -z "${SCHEMA_FILE}" ]; then
   SCHEMA_FILE=$(find /usr/share -name "server.sql.gz" 2>/dev/null | head -n 1 || true)
