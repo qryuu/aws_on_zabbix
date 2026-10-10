@@ -143,9 +143,9 @@ fi
 # ------------------------------------------------------------------------------
 # 4. データベース初期設定 & Proxy スキーマインポート
 # ------------------------------------------------------------------------------
-SCHEMA_FILE=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "proxy.sql.gz" 2>/dev/null | head -n 1 || true)
+SCHEMA_FILE=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "proxy.sql*" 2>/dev/null | grep -i "${dbengine}" | head -n 1 || true)
 if [ -z "${SCHEMA_FILE}" ]; then
-  SCHEMA_FILE=$(find /usr/share -name "proxy.sql.gz" 2>/dev/null | head -n 1 || true)
+  SCHEMA_FILE=$(find /usr/share -name "proxy.sql*" 2>/dev/null | grep -i "${dbengine}" | head -n 1 || true)
 fi
 
 if [ "${dbengine}" = "mysql" ]; then
@@ -191,20 +191,21 @@ GRANT ALL PRIVILEGES ON ${dbname}.* TO '${dbuser}'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 
-  # スキーマインポート
+  # スキーマインポート (.sql / .sql.gz 自動判定)
   if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
-    zcat "${SCHEMA_FILE}" | mysql --defaults-file=/root/.my.cnf "${dbname}"
+    if [[ "${SCHEMA_FILE}" =~ \.gz$ ]]; then
+      zcat "${SCHEMA_FILE}" | mysql --defaults-file=/root/.my.cnf "${dbname}"
+    else
+      cat "${SCHEMA_FILE}" | mysql --defaults-file=/root/.my.cnf "${dbname}"
+    fi
   fi
 
-  # MySQL / MariaDB 圧縮チューニングの適用
+  # MySQL / MariaDB 圧縮チューニングの適用 (Proxy 専用テーブル)
   if [ "${enable_db_compression}" = "true" ]; then
-    echo "Applying InnoDB ROW_FORMAT=COMPRESSED table tuning..."
+    echo "Applying InnoDB ROW_FORMAT=COMPRESSED table tuning for Proxy..."
     mysql --defaults-file=/root/.my.cnf "${dbname}" <<'EOF' || true
-ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
-ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
-ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
-ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
-ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE proxy_history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE proxy_dhistory ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
 EOF
   fi
 
@@ -237,25 +238,27 @@ CREATE USER ${dbuser} WITH PASSWORD '${dbpassword}';
 CREATE DATABASE ${dbname} OWNER ${dbuser};
 EOF
 
-  # スキーマインポート
+  # スキーマインポート (.sql / .sql.gz 自動判定)
   if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
-    zcat "${SCHEMA_FILE}" | PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+    if [[ "${SCHEMA_FILE}" =~ \.gz$ ]]; then
+      zcat "${SCHEMA_FILE}" | PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+    else
+      cat "${SCHEMA_FILE}" | PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+    fi
   fi
 
   # PostgreSQL 圧縮チューニング (LZ4 + toast_tuple_target=128)
   if [ "${enable_db_compression}" = "true" ]; then
-    echo "Applying PostgreSQL LZ4 and TOAST compression tuning..."
+    echo "Applying PostgreSQL LZ4 and TOAST compression tuning for Proxy..."
     sudo -u postgres psql -d "${dbname}" <<'EOF' || true
 ALTER SYSTEM SET default_toast_compression = 'lz4';
 ALTER SYSTEM SET max_wal_size = '256MB';
 SELECT pg_reload_conf();
 
-ALTER TABLE history_text SET (toast_tuple_target = 128);
-ALTER TABLE history_text ALTER COLUMN value SET COMPRESSION lz4;
-ALTER TABLE history_log  SET (toast_tuple_target = 128);
-ALTER TABLE history_log  ALTER COLUMN value SET COMPRESSION lz4;
-ALTER TABLE history_str  SET (toast_tuple_target = 128);
-ALTER TABLE history_str  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE proxy_history SET (toast_tuple_target = 128);
+ALTER TABLE proxy_history ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE proxy_dhistory SET (toast_tuple_target = 128);
+ALTER TABLE proxy_dhistory ALTER COLUMN value SET COMPRESSION lz4;
 EOF
   fi
 fi

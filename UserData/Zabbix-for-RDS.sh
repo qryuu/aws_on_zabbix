@@ -77,14 +77,22 @@ EOF
     --default-character-set=utf8mb4 \
     "${confdbname}" > /tmp/zabbix_backup.sql
 
+  # MySQL 8.0+ / RDS 互換性サニタイズ
+  # 1. 廃止された sql_mode (NO_AUTO_CREATE_USER) の除去
+  sed -i -E 's/NO_AUTO_CREATE_USER,//g; s/,NO_AUTO_CREATE_USER//g; s/NO_AUTO_CREATE_USER//g' /tmp/zabbix_backup.sql
+  # 2. RDSのSUPER権限エラーを防止するためトリガーのDEFINER句を除去
+  sed -i -E 's/\/\*!50017 DEFINER=[^*]+\*\/[[:space:]]*//g' /tmp/zabbix_backup.sql
+  sed -i -E 's/DEFINER=[^ ]+[[:space:]]*//g' /tmp/zabbix_backup.sql
+
   # RDS 上にデータベース & ユーザー作成
   mysql --defaults-file=/root/.my_rds.cnf <<EOF
 CREATE DATABASE IF NOT EXISTS ${dbname} CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
 CREATE USER IF NOT EXISTS '${dbuser}'@'%' IDENTIFIED BY '${dbpassword}';
 GRANT ALL PRIVILEGES ON ${dbname}.* TO '${dbuser}'@'%';
-SET GLOBAL log_bin_trust_function_creators = 1;
 FLUSH PRIVILEGES;
 EOF
+
+  mysql --defaults-file=/root/.my_rds.cnf -e "SET GLOBAL log_bin_trust_function_creators = 1;" 2>/dev/null || true
 
   # RDS へリストア
   mysql --defaults-file=/root/.my_rds.cnf "${dbname}" < /tmp/zabbix_backup.sql

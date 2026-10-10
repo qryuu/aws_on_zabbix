@@ -46,8 +46,23 @@ Provide this script into **UserData** when launching an EC2 instance. OS and CPU
 | `dbpassword` | `zabbix_password` | データベースパスワード |
 | `encryption` | `unencrypted` | 通信暗号化方式 (`unencrypted`, `psk`, `cert`) |
 
+#### OS・アーキテクチャ サポートマトリクス / Support Matrix
+
+Zabbix 公式リポジトリ（`repo.zabbix.com`）の提供仕様および AWS 実環境でのテストに基づくサポート状況です：
+
+| コンポーネント | Amazon Linux 2023 (`x86_64` / `aarch64`) | Amazon Linux 2 (`x86_64`) | Amazon Linux 2 (`aarch64`) |
+|---|:---:|:---:|:---:|
+| **Zabbix Server 8.0 / 7.0 / 6.0** | **対応** (推奨) | 非対応 (公式未提供) | 非対応 (公式未提供) |
+| **Zabbix Proxy 8.0 / 7.0** | **対応** | 非対応 | 非対応 |
+| **Zabbix Proxy 6.0** | **対応** | **対応** | 非対応 |
+| **Zabbix Agent / Agent 2** | **対応** | **対応** | 非対応 |
+
+> [!IMPORTANT]
+> **Zabbix Server 構築時の注意**:  
+> Zabbix 6.0 LTS 以降、公式リポジトリでは RHEL 7 / Amazon Linux 2 向けの Server パッケージは提供されておらず（Proxy および Agent のみ提供）、**Zabbix Server の構築には Amazon Linux 2023 が必須** となります。
+
 #### Zabbix 8.0 LTS を選択する場合の留意点
-- **OS要件**: **Amazon Linux 2023 (AL2023) が必須** です（Amazon Linux 2 はサポート対象外となります）。
+- **OS要件**: **Amazon Linux 2023 (AL2023) が必須** です。
 - **DB要件**: MariaDB 10.11+ / MySQL 8.4 LTS+ / PostgreSQL 15.0+ が必須です。AL2023 のローカル DB では **`postgresql` (PostgreSQL 15)** の選択を強く推奨します。
 - **PHP要件**: PHP 8.2〜8.5 が必須（AL2023 標準で対応）。
 
@@ -91,6 +106,12 @@ EC2 ローカル DB (MySQL / PostgreSQL) で稼働している Zabbix Server の
 | `dbname` | `zabbix` | 移行先データベース名 |
 | `dbuser` | `zabbix` | 移行先 Zabbix 用ユーザー名 |
 | `dbpassword` | `zabbix_password` | 移行先 Zabbix 用パスワード |
+
+> [!NOTE]
+> **RDS 移行スクリプトの自動最適化機能**:
+> - **MySQL 8.0 / 8.4 LTS 互換性自動サニタイズ**: MariaDB のダンプに含まれる廃止された `NO_AUTO_CREATE_USER` や、RDS で権限エラーとなるトリガーの `DEFINER` 句を自動除去して安全にリストアします。
+> - **PostgreSQL 移行時の冪等性**: RDS 側にデータベースが既に存在する場合でも停止せず、オーナー権限の自動調整を行いスムーズに移行を完了します。
+> - **データ整合性保護**: ダンプ取得前に Zabbix Server を自動停止し、移行中のデータ不整合を防止します。
 
 ---
 
