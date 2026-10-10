@@ -4,6 +4,7 @@
 # 
 # Amazon Linux 2023 / Amazon Linux 2 上に Zabbix Server (6.0 LTS / 7.0 LTS) を
 # 自動構築する EC2 UserData スクリプト
+# (CPU アーキテクチャおよび Amazon Linux バージョンは完全自動判別)
 # ==============================================================================
 set -euo pipefail
 
@@ -11,7 +12,6 @@ set -euo pipefail
 # パラメータ設定
 # ------------------------------------------------------------------------------
 version="7.0"                      # Zabbix メジャーバージョン (7.0 または 6.0)
-amazonlinux="auto"                 # OSバージョン: amzn2023, amzn2, または auto (自動判定)
 dbengine="mysql"                   # DBエンジン: mysql (MariaDB) または postgresql (PostgreSQL)
 timezone="Asia\/Tokyo"             # フロントエンドのタイムゾーン (スラッシュはエスケープ)
 agentname="zabbix-server"          # Zabbix Agent ホスト名
@@ -30,8 +30,9 @@ certfile=""                        # Server証明書 URL
 keyfile=""                         # 秘密鍵ファイル URL
 
 # ------------------------------------------------------------------------------
-# 1. CPU アーキテクチャ & OS バージョンの判定
+# 1. CPU アーキテクチャ & Amazon Linux バージョンの完全自動判定
 # ------------------------------------------------------------------------------
+# CPU アーキテクチャ自動判定
 RAW_ARCH=$(uname -m)
 case "${RAW_ARCH}" in
   x86_64)
@@ -41,23 +42,46 @@ case "${RAW_ARCH}" in
     ARCH="aarch64"
     ;;
   *)
-    echo "Unsupported architecture: ${RAW_ARCH}" >&2
+    echo "Error: Unsupported architecture: ${RAW_ARCH}" >&2
     exit 1
     ;;
 esac
 
-if [ "${amazonlinux}" = "auto" ] || [ -z "${amazonlinux}" ]; then
-  if grep -qi 'Amazon Linux release 2023' /etc/system-release 2>/dev/null || grep -q 'VERSION_ID="2023"' /etc/os-release 2>/dev/null; then
-    amazonlinux="amzn2023"
-  elif grep -qi 'Amazon Linux release 2' /etc/system-release 2>/dev/null || grep -q 'VERSION_ID="2"' /etc/os-release 2>/dev/null; then
-    amazonlinux="amzn2"
+# OS 自動判定 (Amazon Linux 2023 または Amazon Linux 2 のみ対象)
+if [ -f /etc/os-release ]; then
+  # shellcheck source=/dev/null
+  . /etc/os-release
+  if [ "${ID:-}" = "amzn" ]; then
+    case "${VERSION_ID:-}" in
+      2023*)
+        amazonlinux="amzn2023"
+        ;;
+      2*)
+        amazonlinux="amzn2"
+        ;;
+      *)
+        echo "Error: Unsupported Amazon Linux version: ${VERSION_ID:-}" >&2
+        exit 1
+        ;;
+    esac
   else
-    echo "Unknown or unsupported Amazon Linux distribution." >&2
+    echo "Error: Unsupported OS '${ID:-}'. This script only supports Amazon Linux (AL2023 / AL2)." >&2
     exit 1
   fi
+elif grep -qi 'Amazon Linux release 2023' /etc/system-release 2>/dev/null; then
+  amazonlinux="amzn2023"
+elif grep -qi 'Amazon Linux release 2' /etc/system-release 2>/dev/null; then
+  amazonlinux="amzn2"
+else
+  echo "Error: Unable to detect Amazon Linux version. This script only supports Amazon Linux (AL2023 / AL2)." >&2
+  exit 1
 fi
 
-echo "Deploying Zabbix Server ${version} on ${amazonlinux} (${ARCH}) with ${dbengine}..."
+echo "========================================================"
+echo " Detected OS: ${amazonlinux} (${ARCH})"
+echo " Target Zabbix Version: ${version}"
+echo " Database Engine: ${dbengine}"
+echo "========================================================"
 
 # ------------------------------------------------------------------------------
 # 2. パッケージマネージャと公式リポジトリの登録
@@ -105,7 +129,6 @@ fi
 # ------------------------------------------------------------------------------
 # 4. データベースの初期設定 & スキーマのインポート
 # ------------------------------------------------------------------------------
-# スキーマファイルの探索 (Zabbix 6.0/7.0 は zabbix-sql-scripts 配下)
 SCHEMA_FILE=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "server.sql.gz" 2>/dev/null | head -n 1 || true)
 if [ -z "${SCHEMA_FILE}" ]; then
   SCHEMA_FILE=$(find /usr/share -name "server.sql.gz" 2>/dev/null | head -n 1 || true)

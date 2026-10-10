@@ -39,3 +39,4 @@ sudo systemctl enable --now zabbix-server zabbix-agent httpd php-fpm || true
 
 echo "Zabbix 7.0 LTS upgrade completed. System will reboot now."
 sudo reboot
+

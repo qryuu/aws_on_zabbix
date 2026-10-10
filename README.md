@@ -7,9 +7,10 @@ Automation and operation scripts for Zabbix on AWS (Amazon Linux 2023 / Amazon L
 
 ## 主な特徴 / Features
 
+- **OS・アーキテクチャの完全自動判別**:
+  - **OS 自動判別**: Amazon Linux 2023 (`amzn2023`) および Amazon Linux 2 (`amzn2`) を `/etc/os-release` から自動識別（手動パラメータ指定不要、Amazon Linux 以外は安全に終了）
+  - **CPU アーキテクチャ自動判別**: `x86_64` (Intel/AMD) および `aarch64` (AWS Graviton) を自動検出
 - **Zabbix 公式リポジトリ対応**: `repo.zabbix.com` から公式 RPM パッケージを取得
-- **CPU アーキテクチャ自動判定**: `x86_64` (Intel/AMD) および `aarch64` (AWS Graviton) を自動検出
-- **最新 OS 対応**: Amazon Linux 2023 (`amzn2023`) および Amazon Linux 2 (`amzn2`) に対応（旧 Amazon Linux 1 は廃止）
 - **DB エンジン選択**: MySQL (MariaDB) または PostgreSQL をパラメータで選択可能
 - **Zabbix 6.0 LTS / 7.0 LTS 対応**: 最新の安定版 LTS バージョンに対応
 
@@ -20,17 +21,16 @@ Automation and operation scripts for Zabbix on AWS (Amazon Linux 2023 / Amazon L
 ### 1. `/UserData/Launch-ZabbixServer-on-AmazonLinux.sh`
 
 Amazon Linux 2023 / Amazon Linux 2 に Zabbix Server および Web フロントエンドを自動構築します。  
-EC2 インスタンスの新規ローンチ時に **UserData** に投入してください。
+EC2 インスタンスの新規ローンチ時に **UserData** に投入してください。OS や CPU アーキテクチャは自動判別されるため、パラメータ指定は不要です。
 
 Automatically deploys Zabbix Server and Web frontend on Amazon Linux 2023 or Amazon Linux 2.  
-Provide this script into **UserData** when launching an EC2 instance.
+Provide this script into **UserData** when launching an EC2 instance. OS and CPU architecture are detected automatically.
 
 #### 主要パラメータ / Main Parameters
 
 | パラメータ | デフォルト値 | 説明 |
 |---|---|---|
 | `version` | `7.0` | Zabbix バージョン (`7.0` または `6.0`) |
-| `amazonlinux` | `auto` | OS バージョン (`amzn2023`, `amzn2`, `auto` で自動判定) |
 | `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
 | `timezone` | `Asia\/Tokyo` | PHP フロントエンドのタイムゾーン |
 | `agentname` | `zabbix-server` | Zabbix Agent ホスト名 |
@@ -54,7 +54,6 @@ Provide this script into **UserData** when launching an EC2 instance.
 | パラメータ | デフォルト値 | 説明 |
 |---|---|---|
 | `version` | `7.0` | Zabbix バージョン (`7.0` または `6.0`) |
-| `amazonlinux` | `auto` | OS バージョン (`amzn2023`, `amzn2`, `auto` で自動判定) |
 | `dbengine` | `mysql` | DB エンジン (`mysql` または `postgresql`) |
 | `proxyname` | `zabbix-proxy` | Zabbix Proxy ホスト名 |
 | `server` | `10.0.0.10` | 接続先 Zabbix Server の IP または FQDN |
