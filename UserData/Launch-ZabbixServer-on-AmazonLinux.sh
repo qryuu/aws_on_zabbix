@@ -80,12 +80,15 @@ else
   exit 1
 fi
 
+# OS要件のバリデーション (Zabbix 公式リポジトリでは 6.0 以降 Server は AL2023 必須)
+if [ "${amazonlinux}" = "amzn2" ]; then
+  echo "Error: Official Zabbix repository does not provide Zabbix Server packages for Amazon Linux 2 (EL7) since Zabbix 6.0 LTS (Agent and Proxy only)." >&2
+  echo "Please use Amazon Linux 2023 (amzn2023) for Zabbix Server." >&2
+  exit 1
+fi
+
 # Zabbix 8.0 動作要件のバリデーション
 if [ "${version}" = "8.0" ]; then
-  if [ "${amazonlinux}" != "amzn2023" ]; then
-    echo "Error: Zabbix 8.0 requires Amazon Linux 2023 or later (Amazon Linux 2 is not supported)." >&2
-    exit 1
-  fi
   if [ "${dbengine}" = "mysql" ]; then
     echo "Note: Zabbix 8.0 requires MariaDB 10.11+ or MySQL 8.4 LTS+."
     echo "On Amazon Linux 2023 with local database, 'postgresql' (PostgreSQL 15+) is strongly recommended."
