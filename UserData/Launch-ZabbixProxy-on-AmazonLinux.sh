@@ -1,154 +1,308 @@
 #!/bin/bash
-#変数宣言
-version=4.0 #Zabbixメジャーバージョン
-minorversion=latest #Zabbixマイナーバージョン or latest
-amazonlinux=amzn1 #AmaznLinuxバージョン amzn1 or amzn2
-proxyname= #ZabbixProxy名
-agentname= #ZabbixAgent名
-server= #ZabbixServerIPorFQDN
-dbname=zabbix #ZabbixDB名
-dbuser=zabbix #ZabbixDBユーザ名
-dbpassword=zabbix #ZabbixDBパスワード
-encryption= #暗号化方式 unencrypted or psk or cert
-#暗号化方式pskの場合入力
-pskid= #pre-shared keysアイデンティティ
-#暗号化方式certの場合入力　ファイルをダウンロード可能な場所に配置してください。
-cafile= #CA証明書URL
-certfle= #Server証明書URL
-keyfile= #秘密鍵ファイルURL
+# ==============================================================================
+# Launch-ZabbixProxy-on-AmazonLinux.sh
+# 
+# Amazon Linux 2023 / Amazon Linux 2 上に Zabbix Proxy (6.0 LTS / 7.0 LTS) を
+# 自動構築する EC2 UserData スクリプト
+# (CPU アーキテクチャおよび Amazon Linux バージョンは完全自動判別)
+# ==============================================================================
+set -euo pipefail
 
-#リポジトリ登録
-echo [amazon.zabbix] >> /etc/yum.repos.d/zabbix.repo
-echo name=amazon.zabbix >> /etc/yum.repos.d/zabbix.repo
-echo baseurl=https://s3-ap-northeast-1.amazonaws.com/amazon.zabbix/$amazonlinux/$version/\$basearch >> /etc/yum.repos.d/zabbix.repo
-echo gpgcheck=0 >> /etc/yum.repos.d/zabbix.repo
+# ------------------------------------------------------------------------------
+# パラメータ設定
+# ------------------------------------------------------------------------------
+version="7.0"                      # Zabbix メジャーバージョン (7.0 または 6.0)
+dbengine="mysql"                   # DBエンジン: mysql (MariaDB) または postgresql (PostgreSQL)
+enable_db_compression="true"       # DB圧縮チューニング: true または false
 
-#パッケージインストール
-yum update
-yum install --enablerepo=epel iksemel iksemel-devel -y
-if [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
-yum install zabbix-proxy-mysql zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mysql56 mysql56-server -y
-elif [ ${minorversion} != "latest" ] && [ ${amazonlinux} = "amzn1" ] ; then
-yum install zabbix-proxy-mysql-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} mysql56 mysql56-server -y
-elif [ ${minorversion} = "latest" ] && [ ${amazonlinux} = "amzn2" ] ; then
-amazon-linux-extras install  epel -y
-yum install zabbix-server-mysql zabbix-web-mysql zabbix-web-japanese zabbix-java-gateway zabbix-agent zabbix-get zabbix-sender mariadb mariadb-server -y
+proxyname="zabbix-proxy"           # Zabbix Proxy ホスト名
+agentname="zabbix-proxy-agent"     # Zabbix Agent ホスト名
+server="10.0.0.10"                 # 接続先 Zabbix Server の IP または FQDN
+dbname="zabbix_proxy"              # Proxy 用 DB 名
+dbuser="zabbix"                    # DB ユーザー名
+dbpassword="zabbix_password"       # DB パスワード (本番環境では変更してください)
+encryption="unencrypted"           # 暗号化方式: unencrypted, psk, または cert
+
+# 暗号化方式が psk の場合
+pskid=""                           # Pre-Shared Key Identity
+
+# 暗号化方式が cert の場合 (ダウンロード可能なURLを指定)
+cafile=""                          # CA証明書 URL
+certfile=""                        # Server証明書 URL
+keyfile=""                         # 秘密鍵ファイル URL
+
+# ------------------------------------------------------------------------------
+# 1. CPU アーキテクチャ & Amazon Linux バージョンの完全自動判定
+# ------------------------------------------------------------------------------
+# CPU アーキテクチャ自動判定
+RAW_ARCH=$(uname -m)
+case "${RAW_ARCH}" in
+  x86_64)
+    ARCH="x86_64"
+    ;;
+  aarch64|arm64)
+    ARCH="aarch64"
+    ;;
+  *)
+    echo "Error: Unsupported architecture: ${RAW_ARCH}" >&2
+    exit 1
+    ;;
+esac
+
+# OS 自動判定 (Amazon Linux 2023 または Amazon Linux 2 のみ対象)
+if [ -f /etc/os-release ]; then
+  # shellcheck source=/dev/null
+  . /etc/os-release
+  if [ "${ID:-}" = "amzn" ]; then
+    case "${VERSION_ID:-}" in
+      2023*)
+        amazonlinux="amzn2023"
+        ;;
+      2*)
+        amazonlinux="amzn2"
+        ;;
+      *)
+        echo "Error: Unsupported Amazon Linux version: ${VERSION_ID:-}" >&2
+        exit 1
+        ;;
+    esac
+  else
+    echo "Error: Unsupported OS '${ID:-}'. This script only supports Amazon Linux (AL2023 / AL2)." >&2
+    exit 1
+  fi
+elif grep -qi 'Amazon Linux release 2023' /etc/system-release 2>/dev/null; then
+  amazonlinux="amzn2023"
+elif grep -qi 'Amazon Linux release 2' /etc/system-release 2>/dev/null; then
+  amazonlinux="amzn2"
 else
-amazon-linux-extras install epel -y
-yum install zabbix-server-mysql-${minorversion} zabbix-web-mysql-${minorversion} zabbix-web-japanese-${minorversion} zabbix-java-gateway-${minorversion} zabbix-agent-${minorversion} zabbix-get-${minorversion} zabbix-sender-${minorversion} mariadb mariadb-server -y
+  echo "Error: Unable to detect Amazon Linux version. This script only supports Amazon Linux (AL2023 / AL2)." >&2
+  exit 1
 fi
 
-#MySql起動
-if [ ${amazonlinux} = "amzn1" ] ; then
-service mysqld start
+echo "========================================================"
+echo " Detected OS: ${amazonlinux} (${ARCH})"
+echo " Target Zabbix Version: ${version}"
+echo " Database Engine: ${dbengine}"
+echo " DB Compression Tuning: ${enable_db_compression}"
+echo "========================================================"
+
+# ------------------------------------------------------------------------------
+# 2. パッケージマネージャと公式リポジトリの登録
+# ------------------------------------------------------------------------------
+if [ "${amazonlinux}" = "amzn2023" ]; then
+  PKG_MGR="dnf"
+  ${PKG_MGR} update -y
+  # 公式 Zabbix リポジトリ RPM のインストール
+  rpm -Uvh --replacepkgs "https://repo.zabbix.com/zabbix/${version}/amazonlinux/2023/${ARCH}/zabbix-release-latest-${version}.amzn2023.noarch.rpm" || true
+  ${PKG_MGR} clean all
+elif [ "${amazonlinux}" = "amzn2" ]; then
+  PKG_MGR="yum"
+  ${PKG_MGR} update -y
+  # AL2 の場合は EPEL および RHEL7 互換公式リポジトリを利用
+  amazon-linux-extras install epel -y || true
+  ${PKG_MGR} install -y epel-release || true
+  rpm -Uvh --replacepkgs "https://repo.zabbix.com/zabbix/${version}/rhel/7/x86_64/zabbix-release-latest-${version}.el7.noarch.rpm" || true
+  ${PKG_MGR} clean all
+fi
+
+# ------------------------------------------------------------------------------
+# 3. データベースおよび Zabbix Proxy パッケージのインストール
+# ------------------------------------------------------------------------------
+COMMON_PKGS="zabbix-sql-scripts zabbix-agent"
+
+if [ "${dbengine}" = "mysql" ]; then
+  if [ "${amazonlinux}" = "amzn2023" ]; then
+    ${PKG_MGR} install -y mariadb105-server zabbix-proxy-mysql ${COMMON_PKGS}
+  else
+    amazon-linux-extras install -y lamp-mariadb10.2-php7.2 || true
+    ${PKG_MGR} install -y mariadb mariadb-server zabbix-proxy-mysql ${COMMON_PKGS}
+  fi
+elif [ "${dbengine}" = "postgresql" ]; then
+  if [ "${amazonlinux}" = "amzn2023" ]; then
+    ${PKG_MGR} install -y postgresql15-server zabbix-proxy-pgsql ${COMMON_PKGS}
+  else
+    amazon-linux-extras install -y postgresql14 || true
+    ${PKG_MGR} install -y postgresql-server zabbix-proxy-pgsql ${COMMON_PKGS}
+  fi
 else
-systemctl start mariadb.service
+  echo "Unsupported dbengine: ${dbengine}" >&2
+  exit 1
 fi
 
-#MySql root ランダムパスワード生成
-vMySQLRootPasswd="$(cat /dev/urandom | tr -dc '[:alnum:]' | head -c 16 | tee -a /home/ec2-user/.mysql.secrets)"
-
-#MySql_secure_installation
-mysql -u root --password= -e "
-    UPDATE mysql.user SET Password=PASSWORD('${vMySQLRootPasswd}') WHERE User='root';
-    DELETE FROM mysql.user WHERE User='';
-    DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
-    DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
-    FLUSH PRIVILEGES;"
-
-#ZabbixDB設定
-echo [mysql] >> /home/ec2-user/my.cnf 
-echo host = localhost >> /home/ec2-user/my.cnf
-echo user = root >> /home/ec2-user/my.cnf
-dbrootpass() {
-cat /home/ec2-user/.mysql.secrets
-}
-dbrootpass=`dbrootpass`
-echo password = ${dbrootpass} >> /home/ec2-user/my.cnf
-echo "create database ${dbname} character set utf8 collate utf8_bin; grant all privileges on zabbix.* to ${dbuser}@localhost identified by '${dbpassword}';" > /tmp/create.sql
-mysql --defaults-extra-file=/home/ec2-user/my.cnf < /tmp/create.sql
-echo [mysql] >> /home/ec2-user/my.cnf-zabbix
-echo host = localhost >> /home/ec2-user/my.cnf-zabbix
-echo user = ${dbuser} >> /home/ec2-user/my.cnf-zabbix
-echo password = ${dbpassword} >> /home/ec2-user/my.cnf-zabbix
-echo database = ${dbname} >> /home/ec2-user/my.cnf-zabbix
-docversioncheck() {
-ls /usr/share/doc/ |grep zabbix-proxy |awk '{sub("^.*-","");sub("/$",""); print $0}'
-}
-docversion=`docversioncheck`
-zcat "/usr/share/doc/zabbix-proxy-mysql-${docversion}/schema.sql.gz" | mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix 
-echo "ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8; ALTER TABLE events ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;" > /tmp/ALTERTABLE.sql
-mysql --defaults-extra-file=/home/ec2-user/my.cnf-zabbix < /tmp/ALTERTABLE.sql
-
-#ZabbixProxy設定
-sed -i -e "s/Server=127.0.0.1/Server=${server}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/Hostname=Zabbix proxy/Hostname=${proxyname}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/LogFileSize=0/LogFileSize=10/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/DBName=zabbix_proxy/DBName=${dbname}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/DBUser=zabbix/DBUser=${dbuser}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# DBPassword=/DBPassword=${dbpassword}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# ProxyOfflineBuffer=1/ProxyOfflineBuffer=168/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# ConfigFrequency=3600/ConfigFrequency=300/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# StartPollers=5/StartPollers=10/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# StartPollersUnreachable=1/StartPollersUnreachable=3/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# StartPingers=1/StartPingers=5/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# StartDiscoverers=1/StartDiscoverers=3/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# StartHTTPPollers=1/StartHTTPPollers=3/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# JavaGateway=/# JavaGateway=127.0.0.1/g" /etc/zabbix/zabbix_proxy.conf
-
-#ZabbixAgent設定
-sed -i -e "s/LogFileSize=0/LogFileSize=5/g" /etc/zabbix/zabbix_agentd.conf
-sed -i -e "s# EnableRemoteCommands=0/EnableRemoteCommands=1/g" /etc/zabbix/zabbix_agentd.conf
-sed -i -e "s/# LogRemoteCommands=0/LogRemoteCommands=1/g" /etc/zabbix/zabbix_agentd.conf
-sed -i -e "s/Hostname=Zabbix server/Hostname=${agentname}/g" /etc/zabbix/zabbix_agentd.conf
-sed -i -e "s/# RefreshActiveChecks=120/RefreshActiveChecks=60/g" /etc/zabbix/zabbix_agentd.conf
-sed -i -e "s/# UnsafeUserParameters=0/UnsafeUserParameters=1/g" /etc/zabbix/zabbix_agentd.conf
-
-#MySQLテンプレート設定
-mkdir /var/lib/zabbix
-cp /home/ec2-user/my.cnf /var/lib/zabbix/.my.cnf
-chown zabbix.zabbix /var/lib/zabbix/.my.cnf
-chmod 644 /var/lib/zabbix/.my.cnf
-
-#psk設定
-if [ ${encryption} = "psk" ] ; then
-sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=psk/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSAccept=unencrypted/TLSAccept=psk/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSPSKIdentity=/TLSPSKIdentity=${pskid}/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSPSKFile=/TLSPSKFile=\/etc\/zabbix\/tls\/.zabbix_proxy.psk/g" /etc/zabbix/zabbix_proxy.conf
-mkdir /etc/zabbix/tls
-openssl rand -hex 128 > /etc/zabbix/tls/.zabbix_proxy.psk
-chown zabbix.zabbix /etc/zabbix/tls/.zabbix_proxy.psk
-chmod 400 /etc/zabbix/tls/.zabbix_proxy.psk
+# ------------------------------------------------------------------------------
+# 4. データベース初期設定 & Proxy スキーマインポート
+# ------------------------------------------------------------------------------
+SCHEMA_FILE=$(find /usr/share/zabbix-sql-scripts /usr/share/doc/zabbix-sql-scripts -name "proxy.sql.gz" 2>/dev/null | head -n 1 || true)
+if [ -z "${SCHEMA_FILE}" ]; then
+  SCHEMA_FILE=$(find /usr/share -name "proxy.sql.gz" 2>/dev/null | head -n 1 || true)
 fi
 
-#cert設定
-if [ ${encryption} = "cert" ] ; then
-sed -i -e "s/# TLSConnect=unencrypted/TLSConnect=cert/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSAccept=unencrypted/TLSAccept=cert/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSCAFile=/TLSCAFile=\/etc\/zabbix\/tls\/zabbix_ca_file/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSCertFile=/TLSCertFile=\/etc\/zabbix\/tls\/zabbix.crt/g" /etc/zabbix/zabbix_proxy.conf
-sed -i -e "s/# TLSAccept=unencrypted/TLSKeyFile=\/etc\/zabbix\/tls\/zabbix.key/g" /etc/zabbix/zabbix_proxy.conf
-mkdir /etc/zabbix/tls
-cd /etc/zabbix/tls
-wget -O zabbix_ca_file ${cafile}
-wget -O zabbix.crt ${certfle}
-wget -O zabbix.key${keyfile}
-chown zabbix.zabbix /etc/zabbix/tls/*
-chmod 400 /etc/zabbix/tls/*
+if [ "${dbengine}" = "mysql" ]; then
+  # InnoDB 圧縮設定の反映
+  if [ "${enable_db_compression}" = "true" ]; then
+    mkdir -p /etc/my.cnf.d
+    cat <<EOF > /etc/my.cnf.d/zabbix_compression.cnf
+[mysqld]
+innodb_file_per_table = 1
+EOF
+  fi
+
+  systemctl start mariadb.service
+  systemctl enable mariadb.service
+
+  # root ランダムパスワード生成
+  vMySQLRootPasswd="$(cat /dev/urandom | tr -dc 'A-Za-z0-9' | head -c 16)"
+  echo "${vMySQLRootPasswd}" > /root/.mysql.secrets
+  chmod 600 /root/.mysql.secrets
+
+  # 初期 DB & ユーザー作成 (utf8mb4)
+  mysql -u root <<EOF || true
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${vMySQLRootPasswd}';
+DELETE FROM mysql.user WHERE User='';
+DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');
+DROP DATABASE IF EXISTS test;
+DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
+FLUSH PRIVILEGES;
+EOF
+
+  cat <<EOF > /root/.my.cnf
+[client]
+host = localhost
+user = root
+password = "${vMySQLRootPasswd}"
+EOF
+  chmod 600 /root/.my.cnf
+
+  mysql --defaults-file=/root/.my.cnf <<EOF
+CREATE DATABASE ${dbname} CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE USER '${dbuser}'@'localhost' IDENTIFIED BY '${dbpassword}';
+GRANT ALL PRIVILEGES ON ${dbname}.* TO '${dbuser}'@'localhost';
+FLUSH PRIVILEGES;
+EOF
+
+  # スキーマインポート
+  if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
+    zcat "${SCHEMA_FILE}" | mysql --defaults-file=/root/.my.cnf "${dbname}"
+  fi
+
+  # MySQL / MariaDB 圧縮チューニングの適用
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying InnoDB ROW_FORMAT=COMPRESSED table tuning..."
+    mysql --defaults-file=/root/.my.cnf "${dbname}" <<'EOF' || true
+ALTER TABLE history ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_log ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_str ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_text ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+ALTER TABLE history_uint ROW_FORMAT=COMPRESSED KEY_BLOCK_SIZE=8;
+EOF
+  fi
+
+  # Zabbix Agent テンプレート用接続設定
+  mkdir -p /var/lib/zabbix
+  cat <<EOF > /var/lib/zabbix/.my.cnf
+[client]
+user = ${dbuser}
+password = "${dbpassword}"
+EOF
+  chown zabbix:zabbix /var/lib/zabbix/.my.cnf 2>/dev/null || true
+  chmod 600 /var/lib/zabbix/.my.cnf
+
+elif [ "${dbengine}" = "postgresql" ]; then
+  if [ ! -s "/var/lib/pgsql/data/PG_VERSION" ]; then
+    postgresql-setup --initdb || true
+  fi
+  systemctl start postgresql.service
+  systemctl enable postgresql.service
+
+  sudo -u postgres psql <<EOF
+CREATE USER ${dbuser} WITH PASSWORD '${dbpassword}';
+CREATE DATABASE ${dbname} OWNER ${dbuser};
+EOF
+
+  # スキーマインポート
+  if [ -n "${SCHEMA_FILE}" ] && [ -f "${SCHEMA_FILE}" ]; then
+    zcat "${SCHEMA_FILE}" | sudo -u ${dbuser} PGPASSWORD="${dbpassword}" psql -h localhost -U ${dbuser} -d ${dbname}
+  fi
+
+  # PostgreSQL 圧縮チューニング (LZ4 + toast_tuple_target=128)
+  if [ "${enable_db_compression}" = "true" ]; then
+    echo "Applying PostgreSQL LZ4 and TOAST compression tuning..."
+    sudo -u postgres psql -d "${dbname}" <<'EOF' || true
+ALTER SYSTEM SET default_toast_compression = 'lz4';
+ALTER SYSTEM SET max_wal_size = '256MB';
+SELECT pg_reload_conf();
+
+ALTER TABLE history_text SET (toast_tuple_target = 128);
+ALTER TABLE history_text ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_log  SET (toast_tuple_target = 128);
+ALTER TABLE history_log  ALTER COLUMN value SET COMPRESSION lz4;
+ALTER TABLE history_str  SET (toast_tuple_target = 128);
+ALTER TABLE history_str  ALTER COLUMN value SET COMPRESSION lz4;
+EOF
+  fi
 fi
 
-#自動起動設定
-if [ ${amazonlinux} = "amzn1" ] ; then
-chkconfig zabbix-proxy on
-chkconfig zabbix-agent on
-chkconfig zabbix-java-gateway on
-chkconfig mysqld on
-else
-systemctl enable zabbix-server.service
-systemctl enable zabbix-agent.service
-systemctl enable zabbix-java-gateway.service
-systemctl enable mariadb.service
+# ------------------------------------------------------------------------------
+# 5. Zabbix Proxy 設定 (/etc/zabbix/zabbix_proxy.conf)
+# ------------------------------------------------------------------------------
+sed -i -E "s/^[# ]*Server=.*/Server=${server}/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*Hostname=.*/Hostname=${proxyname}/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*LogFileSize=.*/LogFileSize=10/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*DBName=.*/DBName=${dbname}/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*DBUser=.*/DBUser=${dbuser}/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*DBPassword=.*/DBPassword=${dbpassword}/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*ProxyOfflineBuffer=.*/ProxyOfflineBuffer=168/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*ConfigFrequency=.*/ConfigFrequency=300/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*StartPollers=.*/StartPollers=10/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*StartPollersUnreachable=.*/StartPollersUnreachable=3/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*StartPingers=.*/StartPingers=5/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*StartDiscoverers=.*/StartDiscoverers=3/" /etc/zabbix/zabbix_proxy.conf
+sed -i -E "s/^[# ]*StartHTTPPollers=.*/StartHTTPPollers=3/" /etc/zabbix/zabbix_proxy.conf
+
+# 暗号化設定 (PSK)
+if [ "${encryption}" = "psk" ]; then
+  mkdir -p /etc/zabbix/tls
+  openssl rand -hex 128 > /etc/zabbix/tls/.zabbix_proxy.psk
+  chown zabbix:zabbix /etc/zabbix/tls/.zabbix_proxy.psk 2>/dev/null || true
+  chmod 400 /etc/zabbix/tls/.zabbix_proxy.psk
+
+  sed -i -E "s/^[# ]*TLSConnect=.*/TLSConnect=psk/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSAccept=.*/TLSAccept=psk/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSPSKIdentity=.*/TLSPSKIdentity=${pskid}/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSPSKFile=.*/TLSPSKFile=\/etc\/zabbix\/tls\/.zabbix_proxy.psk/" /etc/zabbix/zabbix_proxy.conf
 fi
 
-reboot
+# 暗号化設定 (Cert)
+if [ "${encryption}" = "cert" ]; then
+  mkdir -p /etc/zabbix/tls
+  cd /etc/zabbix/tls
+  if [ -n "${cafile}" ]; then wget -O zabbix_ca_file "${cafile}"; fi
+  if [ -n "${certfile}" ]; then wget -O zabbix.crt "${certfile}"; fi
+  if [ -n "${keyfile}" ]; then wget -O zabbix.key "${keyfile}"; fi
+  chown -R zabbix:zabbix /etc/zabbix/tls 2>/dev/null || true
+  chmod 400 /etc/zabbix/tls/* 2>/dev/null || true
+
+  sed -i -E "s/^[# ]*TLSConnect=.*/TLSConnect=cert/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSAccept=.*/TLSAccept=cert/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSCAFile=.*/TLSCAFile=\/etc\/zabbix\/tls\/zabbix_ca_file/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSCertFile=.*/TLSCertFile=\/etc\/zabbix\/tls\/zabbix.crt/" /etc/zabbix/zabbix_proxy.conf
+  sed -i -E "s/^[# ]*TLSKeyFile=.*/TLSKeyFile=\/etc\/zabbix\/tls\/zabbix.key/" /etc/zabbix/zabbix_proxy.conf
+fi
+
+# ------------------------------------------------------------------------------
+# 6. Zabbix Agent 設定 (/etc/zabbix/zabbix_agentd.conf)
+# ------------------------------------------------------------------------------
+sed -i -E "s/^[# ]*LogFileSize=.*/LogFileSize=5/" /etc/zabbix/zabbix_agentd.conf
+sed -i -E "s/^[# ]*Server=127.0.0.1/Server=127.0.0.1/" /etc/zabbix/zabbix_agentd.conf
+sed -i -E "s/^[# ]*ServerActive=127.0.0.1/ServerActive=127.0.0.1/" /etc/zabbix/zabbix_agentd.conf
+sed -i -E "s/^[# ]*Hostname=.*/Hostname=${agentname}/" /etc/zabbix/zabbix_agentd.conf
+sed -i -E "s/^[# ]*RefreshActiveChecks=.*/RefreshActiveChecks=60/" /etc/zabbix/zabbix_agentd.conf
+sed -i -E "s/^[# ]*AllowKey=system.run\[\*\]/AllowKey=system.run[*]/" /etc/zabbix/zabbix_agentd.conf || true
+
+# ------------------------------------------------------------------------------
+# 7. サービスの起動 & 自動起動登録
+# ------------------------------------------------------------------------------
+systemctl enable --now zabbix-proxy.service
+systemctl enable --now zabbix-agent.service
+
+echo "Zabbix Proxy installation completed successfully."
